@@ -1,0 +1,39 @@
+---
+import { getCollection } from "astro:content"
+
+const albums = (await getCollection("albums")).sort((a, b) => {
+  const aReleaseDate = a.data.releaseDate?.valueOf() ?? 0
+  const bReleaseDate = b.data.releaseDate?.valueOf() ?? 0
+
+  return bReleaseDate - aReleaseDate
+})
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Albums</title>
+  </head>
+  <body>
+    <main>
+      <p><a href="/">Music Library</a></p>
+      <h1>Albums</h1>
+      {
+        albums.length > 0 ? (
+          <ul>
+            {albums.map((album) => (
+              <li>
+                <a href={`/albums/${album.id}/`}>{album.data.title}</a>
+                <span> by {album.data.artist}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No albums found.</p>
+        )
+      }
+    </main>
+  </body>
+</html>

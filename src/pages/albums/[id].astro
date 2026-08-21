@@ -1,0 +1,78 @@
+---
+import { getCollection } from "astro:content"
+import type { CollectionEntry } from "astro:content"
+
+export async function getStaticPaths() {
+  const albums = await getCollection("albums")
+
+  return albums.map((album) => ({
+    params: { id: album.id },
+    props: { album },
+  }))
+}
+
+type Props = {
+  album: CollectionEntry<"albums">
+}
+
+const { album } = Astro.props
+const tracks = (
+  await getCollection("tracks", ({ data }) => data.album.id === album.id)
+).sort((a, b) => a.data.trackNumber - b.data.trackNumber)
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{album.data.title} | Albums</title>
+  </head>
+  <body>
+    <main>
+      <p><a href="/albums/">Back to albums</a></p>
+      {
+        album.data.cover && (
+          <img
+            src={album.data.cover}
+            alt={`${album.data.title} cover`}
+            width="320"
+            height="320"
+          />
+        )
+      }
+      <h1>{album.data.title}</h1>
+      <p>By {album.data.artist}</p>
+      {
+        album.data.releaseDate && (
+          <p>
+            Released{" "}
+            <time datetime={album.data.releaseDate.toISOString()}>
+              {album.data.releaseDate.toLocaleDateString("en-US", {
+                timeZone: "UTC",
+              })}
+            </time>
+          </p>
+        )
+      }
+      <h2>Tracks</h2>
+      {
+        tracks.length > 0 ? (
+          <ol>
+            {tracks.map((track) => (
+              <li>
+                <span>{track.data.title}</span>
+                {track.data.duration && <span> ({track.data.duration})</span>}
+                {track.data.audioUrl && (
+                  <a href={track.data.audioUrl}> Listen</a>
+                )}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p>No tracks found.</p>
+        )
+      }
+    </main>
+  </body>
+</html>
