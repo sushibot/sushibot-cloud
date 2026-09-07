@@ -1,0 +1,148 @@
+:root {
+  --void: #0a0d0f;
+  --static: #15181b;
+  --static-2: #1d2124;
+  --line: #2a2f33;
+  --bone: #e7e6e2;
+  --ash: #8b9195;
+  --ash-dim: #5c6165;
+  --signal-dim: #3c8f89;
+  --signal-hot: #5cfbe8;
+  --split-hot: #ff2f6d;
+
+  --font-display: "Big Shoulders Display", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--void);
+  color: var(--bone);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  position: relative;
+}
+
+/* page-wide static grain — texture only, never animated */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+a {
+  color: inherit;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal-hot);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--signal-dim);
+  color: var(--void);
+}
+
+/* ---------- wordmark glitch — hover/focus only, never ambient ---------- */
+.wordmark {
+  position: relative;
+  display: inline-block;
+  font-family: var(--font-display);
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: var(--bone);
+  cursor: default;
+}
+
+.wordmark::before,
+.wordmark::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  mix-blend-mode: screen;
+}
+
+.wordmark::before {
+  color: var(--signal-hot);
+}
+
+.wordmark::after {
+  color: var(--split-hot);
+}
+
+.wordmark:hover::before,
+.wordmark:focus::before {
+  opacity: 0.75;
+  animation: bleed-l 0.38s steps(2) infinite;
+}
+
+.wordmark:hover::after,
+.wordmark:focus::after {
+  opacity: 0.75;
+  animation: bleed-r 0.34s steps(2) infinite;
+}
+
+@keyframes bleed-l {
+  0% {
+    transform: translate(-2px, 0);
+  }
+  50% {
+    transform: translate(-3px, 1px);
+  }
+  100% {
+    transform: translate(-2px, 0);
+  }
+}
+
+@keyframes bleed-r {
+  0% {
+    transform: translate(2px, 0);
+  }
+  50% {
+    transform: translate(3px, -1px);
+  }
+  100% {
+    transform: translate(2px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmark:hover::before,
+  .wordmark:focus::before {
+    opacity: 0.6;
+    animation: none;
+    transform: translate(-2px, 0);
+  }
+  .wordmark:hover::after,
+  .wordmark:focus::after {
+    opacity: 0.6;
+    animation: none;
+    transform: translate(2px, 0);
+  }
+}

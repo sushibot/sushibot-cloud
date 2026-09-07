@@ -1,18 +1,179 @@
 ---
+import Layout from "../layouts/Layout.astro"
+import Nav from "../components/Nav.astro"
+import { getCollection } from "astro:content"
 
+const albums = (await getCollection("albums")).sort((a, b) => {
+  const aReleaseDate = a.data.releaseDate?.valueOf() ?? 0
+  const bReleaseDate = b.data.releaseDate?.valueOf() ?? 0
+
+  return bReleaseDate - aReleaseDate
+})
+
+const latest = albums[0]
+
+const latestTrackCount = latest
+  ? (await getCollection("tracks", ({ data }) => data.album.id === latest.id))
+      .length
+  : 0
+
+const latestDate = latest?.data.releaseDate
+  ? latest.data.releaseDate.toLocaleDateString("en-US", { timeZone: "UTC" })
+  : null
+
+const latestMeta = latest
+  ? [
+      latest.data.artist,
+      latestDate,
+      latestTrackCount > 0
+        ? `${latestTrackCount} track${latestTrackCount === 1 ? "" : "s"}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" — ")
+  : ""
 ---
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width" />
-    <meta name="generator" content={Astro.generator} />
-    <title>Music Library</title>
-  </head>
-  <body>
-    <h1>Music Library</h1>
-    <p><a href="/albums/">Browse albums</a></p>
-  </body>
-</html>
+<Layout title="Music Library">
+  <Nav />
+
+  <section class="hero">
+    <div class="hero-inner">
+      <h1 class="wordmark" data-text="MUSIC LIBRARY">MUSIC LIBRARY</h1>
+      <p class="tagline">
+        Dark, quiet, and grungy at rest. It only distorts where you put your
+        cursor.
+      </p>
+      {
+        latest && (
+          <a class="cta" href={`/albums/${latest.id}/`}>
+            Listen to {latest.data.title} →
+          </a>
+        )
+      }
+    </div>
+  </section>
+
+  <div class="divider" aria-hidden="true"></div>
+
+  {
+    latest && (
+      <section class="latest">
+        <div class="meta">
+          <div class="title">{latest.data.title}</div>
+          <div class="by">{latestMeta}</div>
+        </div>
+        <a class="view" href={`/albums/${latest.id}/`}>
+          View release →
+        </a>
+      </section>
+    )
+  }
+</Layout>
+
+<style>
+  .hero {
+    position: relative;
+    padding: 96px 28px 72px;
+    overflow: hidden;
+    background:
+      #050506 url("/album-art/sushibot.jpg") center 30% / cover no-repeat;
+  }
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      180deg,
+      rgba(5, 6, 6, 0.55),
+      rgba(5, 6, 6, 0.88) 70%,
+      var(--void) 100%
+    );
+  }
+  .hero-inner {
+    position: relative;
+    z-index: 1;
+    max-width: 560px;
+  }
+  .hero .wordmark {
+    font-size: clamp(2.4rem, 7vw, 4.6rem);
+    line-height: 0.94;
+  }
+  .tagline {
+    margin-top: 16px;
+    max-width: 48ch;
+    color: var(--ash);
+  }
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 28px;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    color: var(--signal-dim);
+    text-decoration: none;
+    border-bottom: 1px solid var(--signal-dim);
+    padding-bottom: 2px;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .cta:hover {
+    color: var(--signal-hot);
+    border-color: var(--signal-hot);
+  }
+
+  /* angular cut between the hero and the latest-release strip — cyberpunk.net cue */
+  .divider {
+    height: 28px;
+    background: var(--static-2);
+    clip-path: polygon(0 100%, 100% 0%, 100% 100%);
+  }
+
+  .latest {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 26px 28px;
+    background: var(--static);
+    border-bottom: 1px solid var(--line);
+  }
+  .latest .title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.4rem;
+  }
+  .latest .by {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ash);
+    margin-top: 4px;
+  }
+  .latest .view {
+    margin-left: auto;
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--signal-dim);
+    text-decoration: none;
+    border-bottom: 1px solid var(--signal-dim);
+    padding-bottom: 2px;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .latest .view:hover {
+    color: var(--signal-hot);
+    border-color: var(--signal-hot);
+  }
+  @media (max-width: 560px) {
+    .latest {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .latest .view {
+      margin-left: 0;
+    }
+  }
+</style>

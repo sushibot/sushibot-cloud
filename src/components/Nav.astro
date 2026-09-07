@@ -1,0 +1,39 @@
+---
+---
+
+<nav class="nav">
+  <a class="wordmark" data-text="MUSIC LIBRARY" href="/">MUSIC LIBRARY</a>
+  <div class="nav-links">
+    <a href="/albums/">Albums</a>
+  </div>
+</nav>
+
+<style>
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+  }
+  .nav .wordmark {
+    font-size: 1rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .nav-links {
+    display: flex;
+    gap: 22px;
+  }
+  .nav-links a {
+    text-decoration: none;
+    color: var(--ash);
+    transition: color 0.15s;
+  }
+  .nav-links a:hover {
+    color: var(--signal-hot);
+  }
+</style>
