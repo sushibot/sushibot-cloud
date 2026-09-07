@@ -1,7 +1,0 @@
-{
-  "$schema": "../../../../.astro/collections/tracks.schema.json",
-  "title": "Fifth Song",
-  "album": "neon-summer",
-  "duration": "3:56",
-  "trackNumber": 5
-}

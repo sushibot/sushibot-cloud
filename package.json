@@ -8,9 +8,11 @@
     "preview": "astro preview",
     "astro": "astro",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "sync:r2": "node --env-file=.env scripts/sync-r2-music.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1127.0",
     "astro": "^7.2.4"
   },
   "engines": {
