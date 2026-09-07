@@ -2,6 +2,7 @@
 import Layout from "../layouts/Layout.astro"
 import Nav from "../components/Nav.astro"
 import { getCollection } from "astro:content"
+import type { CollectionEntry } from "astro:content"
 
 const albums = (await getCollection("albums")).sort((a, b) => {
   const aReleaseDate = a.data.releaseDate?.valueOf() ?? 0
@@ -12,34 +13,38 @@ const albums = (await getCollection("albums")).sort((a, b) => {
 
 const latest = albums[0]
 
-const latestTrackCount = latest
-  ? (await getCollection("tracks", ({ data }) => data.album.id === latest.id))
-      .length
-  : 0
+const allTracks = await getCollection("tracks")
+const trackCountByAlbum = new Map<string, number>()
+for (const track of allTracks) {
+  const albumId = track.data.album.id
+  trackCountByAlbum.set(albumId, (trackCountByAlbum.get(albumId) ?? 0) + 1)
+}
 
-const latestDate = latest?.data.releaseDate
-  ? latest.data.releaseDate.toLocaleDateString("en-US", { timeZone: "UTC" })
-  : null
+function releaseMeta(album: CollectionEntry<"albums">) {
+  const dateStr = album.data.releaseDate
+    ? album.data.releaseDate.toLocaleDateString("en-US", { timeZone: "UTC" })
+    : null
+  const count = trackCountByAlbum.get(album.id) ?? 0
+  const countStr = count > 0 ? `${count} track${count === 1 ? "" : "s"}` : null
 
-const latestMeta = latest
-  ? [
-      latest.data.artist,
-      latestDate,
-      latestTrackCount > 0
-        ? `${latestTrackCount} track${latestTrackCount === 1 ? "" : "s"}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" — ")
-  : ""
+  return [dateStr, countStr].filter(Boolean).join(" — ")
+}
+
+const latestMeta = latest ? releaseMeta(latest) : ""
 ---
 
 <Layout title="Music Library">
   <Nav />
 
   <section class="hero">
+    <div class="hero-echo" aria-hidden="true">
+      <span>SUSHIBOT</span>
+      <span>SUSHIBOT</span>
+      <span>SUSHIBOT</span>
+    </div>
+    <div class="hero-image" aria-hidden="true"></div>
     <div class="hero-inner">
-      <h1 class="wordmark" data-text="MUSIC LIBRARY">MUSIC LIBRARY</h1>
+      <h1 class="wordmark" data-text="SUSHIBOT">SUSHIBOT</h1>
       <p class="tagline">
         Dark, quiet, and grungy at rest. It only distorts where you put your
         cursor.
@@ -47,7 +52,7 @@ const latestMeta = latest
       {
         latest && (
           <a class="cta" href={`/albums/${latest.id}/`}>
-            Listen to {latest.data.title} →
+            [ Listen to {latest.data.title} → ]
           </a>
         )
       }
@@ -69,6 +74,22 @@ const latestMeta = latest
       </section>
     )
   }
+
+  <section class="discography">
+    <h2>Everything else</h2>
+    <div class="album-grid">
+      {
+        albums.slice(1).map((album) => (
+          <a class="album-card" href={`/albums/${album.id}/`}>
+            <div class="meta">
+              <div class="t">{album.data.title}</div>
+              <div class="a">{releaseMeta(album)}</div>
+            </div>
+          </a>
+        ))
+      }
+    </div>
+  </section>
 </Layout>
 
 <style>
@@ -76,19 +97,60 @@ const latestMeta = latest
     position: relative;
     padding: 96px 28px 72px;
     overflow: hidden;
-    background:
-      #050506 url("/album-art/sushibot.jpg") center 30% / cover no-repeat;
+    background: var(--void);
+    min-height: 420px;
+    display: flex;
+    align-items: center;
   }
-  .hero::before {
-    content: "";
+  /* repeated ghost wordmark — near-invisible typographic texture behind the hero */
+  .hero-echo {
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      180deg,
-      rgba(5, 6, 6, 0.55),
-      rgba(5, 6, 6, 0.88) 70%,
-      var(--void) 100%
+    z-index: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: clamp(0.5rem, 3vw, 1.5rem);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .hero-echo span {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: clamp(3.5rem, 15vw, 10rem);
+    line-height: 1;
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(231, 230, 226, 0.05);
+    text-stroke: 1px rgba(231, 230, 226, 0.05);
+  }
+
+  .hero-image {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-image: url("/album-art/sushibot.jpg");
+    background-repeat: no-repeat;
+    background-position: right center;
+    background-size: contain;
+    filter: grayscale(1) brightness(0.6) contrast(0.9);
+    opacity: 0.6;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0%,
+      transparent 48%,
+      black 90%
     );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0%,
+      transparent 48%,
+      black 90%
+    );
+  }
+  @media (max-width: 640px) {
+    .hero-image {
+      display: none;
+    }
   }
   .hero-inner {
     position: relative;
@@ -107,14 +169,15 @@ const latestMeta = latest
   .cta {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
     margin-top: 28px;
     font-family: var(--font-mono);
-    font-size: 0.9rem;
-    color: var(--signal-dim);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--bone);
     text-decoration: none;
-    border-bottom: 1px solid var(--signal-dim);
-    padding-bottom: 2px;
+    border: 1px solid var(--line);
+    padding: 11px 18px;
     transition:
       color 0.15s,
       border-color 0.15s;
@@ -175,5 +238,50 @@ const latestMeta = latest
     .latest .view {
       margin-left: 0;
     }
+  }
+
+  /* dusk/flare — the accent quarantined for Neon Summer in the mood board, reused here
+     to set the full discography apart from the signal-cyan hero/featured module above */
+  .discography {
+    padding: 48px 28px 72px;
+  }
+  .discography h2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.3rem;
+  }
+  .album-grid {
+    margin-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+  .album-card {
+    display: block;
+    padding: 14px 2px;
+    border-bottom: 1px solid var(--line);
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s;
+  }
+  .album-card:hover {
+    border-color: var(--dusk);
+  }
+  .album-card .t {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.05rem;
+    transition: color 0.15s;
+  }
+  .album-card:hover .t {
+    color: var(--dusk);
+  }
+  .album-card .a {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ash);
+    margin-top: 4px;
+    transition: color 0.15s;
+  }
+  .album-card:hover .a {
+    color: var(--flare);
   }
 </style>

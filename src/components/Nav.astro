@@ -2,7 +2,21 @@
 ---
 
 <nav class="nav">
-  <a class="wordmark" data-text="MUSIC LIBRARY" href="/">MUSIC LIBRARY</a>
+  <a class="brand" href="/">
+    <svg class="mark" viewBox="0 0 100 100" width="24" height="24" aria-hidden="true">
+      <defs>
+        <filter id="mark-glow" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="6" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      <circle cx="50" cy="50" r="30" fill="var(--dusk)" filter="url(#mark-glow)" />
+    </svg>
+		<!--<span class="wordmark" data-text="MUSIC LIBRARY">MUSIC LIBRARY</span> -->
+  </a>
   <div class="nav-links">
     <a href="/albums/">Albums</a>
   </div>
@@ -19,9 +33,17 @@
     font-family: var(--font-mono);
     font-size: 0.78rem;
   }
+  .nav .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+  }
+  .nav .mark {
+    display: block;
+  }
   .nav .wordmark {
     font-size: 1rem;
-    font-weight: 700;
     text-decoration: none;
   }
   .nav-links {

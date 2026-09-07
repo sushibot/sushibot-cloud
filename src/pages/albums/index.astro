@@ -26,7 +26,6 @@ const albums = (await getCollection("albums")).sort((a, b) => {
             {albums.map((album) => (
               <li>
                 <a href={`/albums/${album.id}/`}>{album.data.title}</a>
-                <span> by {album.data.artist}</span>
               </li>
             ))}
           </ul>
