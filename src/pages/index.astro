@@ -1,6 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro"
 import Nav from "../components/Nav.astro"
+import Socials from "../components/Socials.astro"
 import { getCollection } from "astro:content"
 import type { CollectionEntry } from "astro:content"
 
@@ -75,20 +76,9 @@ const latestMeta = latest ? releaseMeta(latest) : ""
     )
   }
 
-  <section class="discography">
-    <div class="album-grid">
-      {
-        albums.slice(1).map((album) => (
-          <a class="album-card" href={`/albums/${album.id}/`}>
-            <div class="meta">
-              <div class="t">{album.data.title}</div>
-              <div class="a">{releaseMeta(album)}</div>
-            </div>
-          </a>
-        ))
-      }
-    </div>
-  </section>
+  <div class="browse-more">
+    <a class="cta" href="/albums/">[ Browse all albums → ]</a>
+  </div>
 
   <section class="about">
     <div class="about-content">
@@ -96,20 +86,24 @@ const latestMeta = latest ? releaseMeta(latest) : ""
       <p class="bio">
         Howzit bah. Glad you found me. I've been making music for over a
         decade now, and this website holds almost my entire catalog of stuff
-				I've done over the years.<br> <br> I swing between a ton of different genres:
+        I've done over the years.<br> <br> I swing between a ton of different genres:
         Electronic, Big Room, Liquid DnB, Hardstyle, Techno, IDM, etc. Some
         of my biggest artist inspirations include: Deadmau5 (bro is
         literally the reason why I started doing this in the first place),
         Kill The Noise, Feed Me, Noisia, Skrillex, Fre4knc, ISOXO, and
         Knock2, just to name a few. Aside from my music production, I'm also
         a self taught pianist and I've been playing ever since I was 10
-				years old. <br> <br> Anyway, each album represents the year of all the music I
+        years old. <br> <br> Anyway, each album represents the year of all the music I
         created, but did not post anywhere. You may find a bunch of
         redundant songs or re-used themes everywhere. Thanks for visiting
         and I hope you enjoy!
       </p>
     </div>
   </section>
+
+  <footer class="site-footer">
+    <Socials />
+  </footer>
 </Layout>
 
 <style>
@@ -260,49 +254,11 @@ const latestMeta = latest ? releaseMeta(latest) : ""
     }
   }
 
-  /* dusk/flare — the accent quarantined for Neon Summer in the mood board, reused here
-     to set the full discography apart from the signal-cyan hero/featured module above */
-  .discography {
-    padding: 48px 28px 72px;
-  }
-  .discography h2 {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1.3rem;
-  }
-  .album-grid {
-    margin-top: 20px;
-    border-top: 1px solid var(--line);
-  }
-  .album-card {
-    display: block;
-    padding: 14px 2px;
+  .browse-more {
+    display: flex;
+    justify-content: center;
+    padding: 40px 28px;
     border-bottom: 1px solid var(--line);
-    text-decoration: none;
-    color: inherit;
-    transition: border-color 0.15s;
-  }
-  .album-card:hover {
-    border-color: var(--dusk);
-  }
-  .album-card .t {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1.05rem;
-    transition: color 0.15s;
-  }
-  .album-card:hover .t {
-    color: var(--dusk);
-  }
-  .album-card .a {
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    color: var(--ash);
-    margin-top: 4px;
-    transition: color 0.15s;
-  }
-  .album-card:hover .a {
-    color: var(--flare);
   }
 
   .about {
@@ -356,5 +312,10 @@ const latestMeta = latest ? releaseMeta(latest) : ""
     margin-top: 20px;
     line-height: 1.7;
     color: var(--ash);
+  }
+
+  .site-footer {
+    padding: 32px 28px;
+    background: var(--static);
   }
 </style>
