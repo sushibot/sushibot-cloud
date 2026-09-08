@@ -47,7 +47,7 @@ const latestMeta = latest ? releaseMeta(latest) : ""
     <div class="hero-inner">
       <h1 class="wordmark" data-text="SUSHIBOt">SUSHIB<span class="accent">O</span>t</h1>
       <p class="tagline">
-			Genres: Electronic, Big Room, Liquid DnB, Hardstyle, Techno, IDM, ???, no AI generated music slop. 
+			Genres: Electronic, Big Room, Liquid DnB, Hardstyle, Techno, IDM, ???, no AI generated music slop.
       </p>
       {
         latest && (
@@ -137,6 +137,11 @@ const latestMeta = latest ? releaseMeta(latest) : ""
       transparent 48%,
       black 90%
     );
+  }
+  @media (max-width: 640px) {
+    .hero-image {
+      display: none;
+    }
   }
   /* repeated ghost wordmark — sits above the portrait so it reads across it, not hidden behind it */
   .hero-echo {
