@@ -13,6 +13,7 @@
   --flare: #ffb955;
 
   --font-display: "Chakra Petch", "Big Shoulders Display", sans-serif;
+  --font-hero: "Turret Road", var(--font-display);
   --font-body: "IBM Plex Sans", -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }

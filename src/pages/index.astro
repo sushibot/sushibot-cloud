@@ -39,16 +39,15 @@ const latestMeta = latest ? releaseMeta(latest) : ""
 
   <section class="hero">
     <div class="hero-echo" aria-hidden="true">
-      <span>SUSHIBOT</span>
-      <span>SUSHIBOT</span>
-      <span>SUSHIBOT</span>
+      <span>SUSHIBOt</span>
+      <span>SUSHIBOt</span>
+      <span>SUSHIBOt</span>
     </div>
     <div class="hero-image" aria-hidden="true"></div>
     <div class="hero-inner">
-      <h1 class="wordmark" data-text="SUSHIBOT">SUSHIBOT</h1>
+      <h1 class="wordmark" data-text="SUSHIBOt">SUSHIB<span class="accent">O</span>t</h1>
       <p class="tagline">
-        A decade of Electronic, Big Room, Liquid DnB, Hardstyle, Techno, and
-        everything in between.
+			Genres: Electronic, Big Room, Liquid DnB, Hardstyle, Techno, IDM, ???, no AI generated music slop. 
       </p>
       {
         latest && (
@@ -112,32 +111,10 @@ const latestMeta = latest ? releaseMeta(latest) : ""
     padding: 96px 28px 72px;
     overflow: hidden;
     background: var(--void);
-    min-height: 420px;
+    min-height: 100vh;
     display: flex;
     align-items: center;
   }
-  /* repeated ghost wordmark — near-invisible typographic texture behind the hero */
-  .hero-echo {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: clamp(0.5rem, 3vw, 1.5rem);
-    overflow: hidden;
-    white-space: nowrap;
-  }
-  .hero-echo span {
-    font-family: var(--font-display);
-    font-weight: 900;
-    font-size: clamp(3.5rem, 15vw, 10rem);
-    line-height: 1;
-    color: transparent;
-    -webkit-text-stroke: 1px rgba(231, 230, 226, 0.05);
-    text-stroke: 1px rgba(231, 230, 226, 0.05);
-  }
-
   .hero-image {
     position: absolute;
     inset: 0;
@@ -161,19 +138,39 @@ const latestMeta = latest ? releaseMeta(latest) : ""
       black 90%
     );
   }
-  @media (max-width: 640px) {
-    .hero-image {
-      display: none;
-    }
+  /* repeated ghost wordmark — sits above the portrait so it reads across it, not hidden behind it */
+  .hero-echo {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: clamp(0.5rem, 3vw, 1.5rem);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .hero-echo span {
+    font-family: var(--font-hero);
+    font-weight: 800;
+    font-size: clamp(5rem, 19vw, 15rem);
+    line-height: 1;
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(231, 230, 226, 0.08);
+    text-stroke: 1px rgba(231, 230, 226, 0.08);
   }
   .hero-inner {
     position: relative;
-    z-index: 1;
-    max-width: 560px;
+    z-index: 2;
   }
   .hero .wordmark {
-    font-size: clamp(2.4rem, 7vw, 4.6rem);
-    line-height: 0.94;
+    font-family: var(--font-hero);
+    font-weight: 800;
+    font-size: clamp(4rem, 16vw, 13rem);
+    line-height: 0.9;
+  }
+  .hero .wordmark .accent {
+    color: var(--dusk);
   }
   .tagline {
     margin-top: 16px;
