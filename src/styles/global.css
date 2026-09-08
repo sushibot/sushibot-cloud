@@ -30,6 +30,7 @@ html {
 
 body {
   margin: 0;
+  padding-bottom: 84px; /* clears the fixed PlayerBar (src/components/PlayerBar.astro) */
   background: var(--void);
   color: var(--bone);
   font-family: var(--font-body);

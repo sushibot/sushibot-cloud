@@ -50,16 +50,20 @@ const tracks = (
     <h2 class="tracks-title">Tracks</h2>
     {
       tracks.length > 0 ? (
-        <ol class="tracklist">
-          {tracks.map((track) => (
+        <ol class="tracklist" id="tracklist">
+          {tracks.map((track, i) => (
             <li class="track-row">
               <span class="track-title">{track.data.title}</span>
               {track.data.duration && (
                 <span class="track-duration">{track.data.duration}</span>
               )}
               {track.data.audioUrl && (
-                <a class="listen" href={track.data.audioUrl}>
-                  Listen
+                <a
+                  class="listen"
+                  href={track.data.audioUrl}
+                  data-index={i}
+                >
+                  Play
                 </a>
               )}
             </li>
@@ -74,7 +78,49 @@ const tracks = (
   <footer class="site-footer">
     <Socials />
   </footer>
+
+  <script
+    type="application/json"
+    id="album-queue"
+    set:html={JSON.stringify(
+      tracks
+        .filter((track) => track.data.audioUrl)
+        .map((track) => ({
+          title: track.data.title,
+          album: album.data.title,
+          audioUrl: track.data.audioUrl,
+        })),
+    )}
+  />
 </Layout>
+
+<script>
+  function initTracklist() {
+    const list = document.getElementById("tracklist")
+    const queueEl = document.getElementById("album-queue")
+    if (!list || !queueEl || list.dataset.initialized === "true") return
+    list.dataset.initialized = "true"
+
+    let queue: { title: string; album?: string; audioUrl: string }[] = []
+    try {
+      queue = JSON.parse(queueEl.textContent ?? "[]")
+    } catch {
+      queue = []
+    }
+
+    list.querySelectorAll<HTMLAnchorElement>(".listen").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault()
+        const index = Number(link.dataset.index)
+        document.dispatchEvent(
+          new CustomEvent("player:play", { detail: { queue, index } }),
+        )
+      })
+    })
+  }
+
+  document.addEventListener("astro:page-load", initTracklist)
+</script>
 
 <style>
   .album-page {

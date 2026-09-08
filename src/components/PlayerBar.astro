@@ -1,0 +1,557 @@
+---
+---
+
+<div
+  class="player-bar"
+  id="player-bar"
+  transition:persist
+  transition:name="player-bar"
+>
+  <audio id="player-audio" preload="none"></audio>
+
+  <div class="player-inner">
+    <div class="np">
+      <div class="np-title" id="np-title"></div>
+      <div class="np-album" id="np-album"></div>
+    </div>
+
+    <div class="transport">
+      <div class="controls">
+        <button
+          class="tbtn"
+          id="prev-btn"
+          type="button"
+          aria-label="Previous track"
+          disabled
+        >
+          <span class="ic-skip prev"></span>
+        </button>
+        <button
+          class="tbtn play"
+          id="play-btn"
+          type="button"
+          aria-label="Play"
+          disabled
+        >
+          <span class="ic-play" id="play-icon"></span>
+        </button>
+        <button
+          class="tbtn"
+          id="next-btn"
+          type="button"
+          aria-label="Next track"
+          disabled
+        >
+          <span class="ic-skip"></span>
+        </button>
+      </div>
+      <div class="scrub">
+        <span class="time" id="cur-time">0:00</span>
+        <input
+          class="range seek"
+          id="seek"
+          type="range"
+          min="0"
+          max="1000"
+          value="0"
+          step="1"
+          aria-label="Seek"
+          disabled
+        />
+        <span class="time now" id="tot-time">0:00</span>
+      </div>
+    </div>
+
+    <div class="vol">
+      <button class="mute-btn" id="mute-btn" type="button" aria-label="Mute">
+        <svg
+          class="ic-vol"
+          id="vol-icon-on"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z">
+          </path>
+          <path d="M16 9a5 5 0 0 1 0 6"></path>
+          <path d="M19.364 18.364a9 9 0 0 0 0-12.728"></path>
+        </svg>
+        <svg
+          class="ic-vol"
+          id="vol-icon-off"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+          hidden
+        >
+          <path d="M11 4.702a.7.7 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.7.7 0 0 0 11 19.298z">
+          </path>
+          <path d="m16.5 14.5 5-5"></path>
+          <path d="m16.5 9.5 5 5"></path>
+        </svg>
+      </button>
+      <input
+        class="range volume"
+        id="volume"
+        type="range"
+        min="0"
+        max="100"
+        value="80"
+        step="1"
+        aria-label="Volume"
+      />
+    </div>
+  </div>
+</div>
+
+<script>
+  function initPlayerBar() {
+    const bar = document.getElementById("player-bar")
+    if (!bar || bar.dataset.initialized === "true") return
+    bar.dataset.initialized = "true"
+
+    const audio = document.getElementById("player-audio") as HTMLAudioElement
+    const playBtn = document.getElementById("play-btn") as HTMLButtonElement
+    const playIcon = document.getElementById("play-icon") as HTMLSpanElement
+    const prevBtn = document.getElementById("prev-btn") as HTMLButtonElement
+    const nextBtn = document.getElementById("next-btn") as HTMLButtonElement
+    const seek = document.getElementById("seek") as HTMLInputElement
+    const curTimeEl = document.getElementById("cur-time") as HTMLSpanElement
+    const totTimeEl = document.getElementById("tot-time") as HTMLSpanElement
+    const npTitle = document.getElementById("np-title") as HTMLDivElement
+    const npAlbum = document.getElementById("np-album") as HTMLDivElement
+    const muteBtn = document.getElementById("mute-btn") as HTMLButtonElement
+    const volIconOn = document.getElementById("vol-icon-on") as SVGElement
+    const volIconOff = document.getElementById("vol-icon-off") as SVGElement
+    const volume = document.getElementById("volume") as HTMLInputElement
+
+    if (
+      !audio ||
+      !playBtn ||
+      !playIcon ||
+      !prevBtn ||
+      !nextBtn ||
+      !seek ||
+      !curTimeEl ||
+      !totTimeEl ||
+      !npTitle ||
+      !npAlbum ||
+      !muteBtn ||
+      !volIconOn ||
+      !volIconOff ||
+      !volume
+    ) {
+      return
+    }
+
+    type QueueTrack = { title: string; album?: string; audioUrl: string }
+
+    let queue: QueueTrack[] = []
+    let index = -1
+    let isSeeking = false
+
+    function fmt(seconds: number) {
+      if (!Number.isFinite(seconds) || seconds < 0) return "0:00"
+      const m = Math.floor(seconds / 60)
+      const s = Math.floor(seconds % 60)
+      return `${m}:${s < 10 ? "0" : ""}${s}`
+    }
+
+    function setRangeProgress(input: HTMLInputElement) {
+      const min = Number(input.min) || 0
+      const max = Number(input.max) || 100
+      const value = Number(input.value)
+      const pct = max > min ? ((value - min) / (max - min)) * 100 : 0
+      input.style.setProperty("--progress", `${pct}%`)
+    }
+
+    function updatePlayIcon() {
+      playIcon.className = audio.paused ? "ic-play" : "ic-pause"
+      playBtn.setAttribute("aria-label", audio.paused ? "Play" : "Pause")
+    }
+
+    function updateNav() {
+      prevBtn.disabled = queue.length === 0
+      nextBtn.disabled = queue.length === 0
+    }
+
+    function setHidden(el: SVGElement, isHidden: boolean) {
+      if (isHidden) el.setAttribute("hidden", "")
+      else el.removeAttribute("hidden")
+    }
+
+    function updateVolIcon() {
+      const muted = audio.muted || audio.volume === 0
+      setHidden(volIconOn, muted)
+      setHidden(volIconOff, !muted)
+    }
+
+    function loadTrack(newIndex: number) {
+      const track = queue[newIndex]
+      if (!track) return
+      index = newIndex
+      npTitle.textContent = track.title
+      npAlbum.textContent = track.album ?? ""
+      audio.src = track.audioUrl
+      audio.play().catch(() => {})
+      playBtn.disabled = false
+      seek.disabled = false
+      updateNav()
+    }
+
+    playBtn.addEventListener("click", () => {
+      if (!audio.src) return
+      if (audio.paused) audio.play()
+      else audio.pause()
+    })
+
+    prevBtn.addEventListener("click", () => {
+      if (queue.length === 0) return
+      loadTrack((index - 1 + queue.length) % queue.length)
+    })
+
+    nextBtn.addEventListener("click", () => {
+      if (queue.length === 0) return
+      loadTrack((index + 1) % queue.length)
+    })
+
+    audio.addEventListener("play", updatePlayIcon)
+    audio.addEventListener("pause", updatePlayIcon)
+    audio.addEventListener("ended", () => {
+      if (queue.length > 0) loadTrack((index + 1) % queue.length)
+    })
+
+    audio.addEventListener("loadedmetadata", () => {
+      totTimeEl.textContent = fmt(audio.duration)
+      seek.max = String(Math.floor(audio.duration * 1000))
+    })
+
+    audio.addEventListener("timeupdate", () => {
+      if (isSeeking) return
+      curTimeEl.textContent = fmt(audio.currentTime)
+      if (audio.duration) {
+        seek.value = String(Math.floor(audio.currentTime * 1000))
+        setRangeProgress(seek)
+      }
+    })
+
+    seek.addEventListener("input", () => {
+      isSeeking = true
+      curTimeEl.textContent = fmt(Number(seek.value) / 1000)
+      setRangeProgress(seek)
+    })
+    seek.addEventListener("change", () => {
+      audio.currentTime = Number(seek.value) / 1000
+      isSeeking = false
+    })
+
+    volume.addEventListener("input", () => {
+      const v = Number(volume.value) / 100
+      audio.volume = v
+      if (audio.muted && v > 0) audio.muted = false
+      setRangeProgress(volume)
+      updateVolIcon()
+    })
+
+    muteBtn.addEventListener("click", () => {
+      audio.muted = !audio.muted
+      updateVolIcon()
+    })
+
+    document.addEventListener("player:play", ((event: CustomEvent) => {
+      const detail = event.detail
+      if (!detail || !Array.isArray(detail.queue)) return
+      queue = detail.queue
+      loadTrack(detail.index ?? 0)
+    }) as EventListener)
+
+    audio.volume = Number(volume.value) / 100
+    setRangeProgress(volume)
+    setRangeProgress(seek)
+    updateVolIcon()
+    updatePlayIcon()
+    updateNav()
+  }
+
+  document.addEventListener("astro:page-load", initPlayerBar)
+</script>
+
+<style>
+  .player-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    height: 84px;
+    background: var(--static);
+    border-top: 1px solid var(--line);
+  }
+  .player-inner {
+    max-width: 1080px;
+    height: 100%;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: grid;
+    grid-template-columns: 1fr minmax(300px, 722px) 1fr;
+    align-items: center;
+    gap: 28px;
+  }
+
+  .np {
+    min-width: 0;
+  }
+  .np-title {
+    font-family: var(--font-body);
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--bone);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .np-album {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--ash);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .transport {
+    justify-self: center;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .tbtn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ash);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition:
+      color 0.15s,
+      border-color 0.15s,
+      transform 0.08s;
+  }
+  .tbtn:hover:not(:disabled) {
+    color: var(--bone);
+    border-color: var(--ash-dim);
+  }
+  .tbtn:active:not(:disabled) {
+    transform: scale(0.9);
+  }
+  .tbtn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .tbtn.play {
+    width: 36px;
+    height: 36px;
+    background: var(--bone);
+    border-color: var(--bone);
+    color: var(--void);
+  }
+  .tbtn.play:hover:not(:disabled) {
+    background: var(--flare);
+    border-color: var(--flare);
+    color: var(--void);
+  }
+  .tbtn.play:disabled {
+    background: var(--ash-dim);
+    border-color: var(--ash-dim);
+    opacity: 1;
+  }
+
+  .ic-play {
+    width: 0;
+    height: 0;
+    margin-left: 2px;
+    border-style: solid;
+    border-width: 6px 0 6px 10px;
+    border-color: transparent transparent transparent currentColor;
+  }
+  .ic-pause {
+    width: 10px;
+    height: 12px;
+    background-image: linear-gradient(
+      90deg,
+      currentColor 0 30%,
+      transparent 30% 70%,
+      currentColor 70% 100%
+    );
+  }
+  .ic-skip {
+    width: 12px;
+    height: 11px;
+    position: relative;
+    display: block;
+  }
+  .ic-skip::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 5.5px 0 5.5px 8px;
+    border-color: transparent transparent transparent currentColor;
+  }
+  .ic-skip::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 2px;
+    height: 11px;
+    background: currentColor;
+  }
+  .ic-skip.prev {
+    transform: scaleX(-1);
+  }
+
+  .scrub {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+  }
+  .scrub .time {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--ash-dim);
+    font-variant-numeric: tabular-nums;
+    width: 2.6em;
+    flex: none;
+  }
+  .scrub .time.now {
+    text-align: right;
+    color: var(--ash);
+  }
+
+  .range {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 3px;
+    border-radius: 2px;
+    background: linear-gradient(
+      to right,
+      var(--dusk) 0%,
+      var(--dusk) var(--progress, 0%),
+      var(--line) var(--progress, 0%),
+      var(--line) 100%
+    );
+    cursor: pointer;
+  }
+  .range:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+  .range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--bone);
+    border: none;
+    margin-top: 0;
+  }
+  .range::-moz-range-thumb {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--bone);
+    border: none;
+  }
+  .range::-moz-range-track {
+    height: 3px;
+    background: transparent;
+  }
+  .scrub:hover .range::-webkit-slider-thumb {
+    background: var(--flare);
+  }
+  .scrub:hover .range::-moz-range-thumb {
+    background: var(--flare);
+  }
+
+  .vol {
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 9px;
+  }
+  .mute-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--ash);
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .mute-btn:hover {
+    color: var(--bone);
+  }
+  .ic-vol {
+    width: 17px;
+    height: 17px;
+    display: block;
+    color: inherit;
+  }
+  .ic-vol[hidden] {
+    display: none;
+  }
+  .vol .range.volume {
+    width: 90px;
+    flex: none;
+  }
+  .vol:hover .range::-webkit-slider-thumb {
+    background: var(--flare);
+  }
+  .vol:hover .range::-moz-range-thumb {
+    background: var(--flare);
+  }
+
+  @media (max-width: 680px) {
+    .vol {
+      display: none;
+    }
+    .scrub .time {
+      display: none;
+    }
+    .player-inner {
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+    }
+  }
+</style>
