@@ -46,8 +46,8 @@ const latestMeta = latest ? releaseMeta(latest) : ""
     <div class="hero-inner">
       <h1 class="wordmark" data-text="SUSHIBOT">SUSHIBOT</h1>
       <p class="tagline">
-        Dark, quiet, and grungy at rest. It only distorts where you put your
-        cursor.
+        A decade of Electronic, Big Room, Liquid DnB, Hardstyle, Techno, and
+        everything in between.
       </p>
       {
         latest && (
@@ -88,6 +88,27 @@ const latestMeta = latest ? releaseMeta(latest) : ""
           </a>
         ))
       }
+    </div>
+  </section>
+
+  <section class="about">
+    <div class="about-content">
+      <h2 class="about-title">ABOUT</h2>
+      <p class="bio">
+        Howzit bah. Glad you found me. I've been making music for over a
+        decade now, and this website holds almost my entire catalog of stuff
+        I've done over the years. I swing between a ton of different genres:
+        Electronic, Big Room, Liquid DnB, Hardstyle, Techno, IDM, etc. Some
+        of my biggest artist inspirations include: Deadmau5 (bro is
+        literally the reason why I started doing this in the first place),
+        Kill The Noise, Feed Me, Noisia, Skrillex, Fre4knc, ISOXO, and
+        Knock2, just to name a few. Aside from my music production, I'm also
+        a self taught pianist and I've been playing ever since I was 10
+        years old. Each album represents the year of all the music I
+        created, but did not post anywhere. You may find a bunch of
+        redundant songs or re-used themes everywhere. Thanks for visiting
+        and I hope you enjoy!
+      </p>
     </div>
   </section>
 </Layout>
@@ -183,8 +204,8 @@ const latestMeta = latest ? releaseMeta(latest) : ""
       border-color 0.15s;
   }
   .cta:hover {
-    color: var(--signal-hot);
-    border-color: var(--signal-hot);
+    color: var(--flare);
+    border-color: var(--flare);
   }
 
   /* angular cut between the hero and the latest-release strip — cyberpunk.net cue */
@@ -218,17 +239,17 @@ const latestMeta = latest ? releaseMeta(latest) : ""
     flex: none;
     font-family: var(--font-mono);
     font-size: 0.85rem;
-    color: var(--signal-dim);
+    color: var(--dusk);
     text-decoration: none;
-    border-bottom: 1px solid var(--signal-dim);
+    border-bottom: 1px solid var(--dusk);
     padding-bottom: 2px;
     transition:
       color 0.15s,
       border-color 0.15s;
   }
   .latest .view:hover {
-    color: var(--signal-hot);
-    border-color: var(--signal-hot);
+    color: var(--flare);
+    border-color: var(--flare);
   }
   @media (max-width: 560px) {
     .latest {
@@ -283,5 +304,59 @@ const latestMeta = latest ? releaseMeta(latest) : ""
   }
   .album-card:hover .a {
     color: var(--flare);
+  }
+
+  .about {
+    position: relative;
+    overflow: hidden;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    background: var(--void);
+  }
+  .about::before {
+    content: "";
+    position: absolute;
+    inset: -50%;
+    background-image: repeating-linear-gradient(
+      115deg,
+      rgba(241, 106, 91, 0.14) 0 2px,
+      transparent 2px 60px
+    );
+    animation: about-streak 2.6s linear infinite;
+  }
+  @keyframes about-streak {
+    from {
+      transform: translate(0, 0);
+    }
+    to {
+      transform: translate(120px, -120px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .about::before {
+      animation: none;
+    }
+  }
+  .about-content {
+    position: relative;
+    z-index: 1;
+    max-width: 640px;
+    padding: 0 28px;
+  }
+  .about-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.6rem, 4vw, 2.2rem);
+    color: var(--bone);
+  }
+  .about-content .bio {
+    margin-top: 20px;
+    max-width: 52ch;
+    line-height: 1.7;
+    color: var(--ash);
   }
 </style>
