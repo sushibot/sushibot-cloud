@@ -1,5 +1,9 @@
 ---
+import Layout from "../../layouts/Layout.astro"
+import Nav from "../../components/Nav.astro"
+import Socials from "../../components/Socials.astro"
 import { getCollection } from "astro:content"
+import type { CollectionEntry } from "astro:content"
 
 const albums = (await getCollection("albums")).sort((a, b) => {
   const aReleaseDate = a.data.releaseDate?.valueOf() ?? 0
@@ -7,32 +11,138 @@ const albums = (await getCollection("albums")).sort((a, b) => {
 
   return bReleaseDate - aReleaseDate
 })
+
+const allTracks = await getCollection("tracks")
+const tracksByAlbum = new Map<string, CollectionEntry<"tracks">[]>()
+for (const track of allTracks) {
+  const albumId = track.data.album.id
+  const list = tracksByAlbum.get(albumId) ?? []
+  list.push(track)
+  tracksByAlbum.set(albumId, list)
+}
+
+function parseDuration(duration?: string) {
+  if (!duration) return 0
+  const [minutes, seconds] = duration.split(":").map(Number)
+  if (Number.isNaN(minutes) || Number.isNaN(seconds)) return 0
+  return minutes * 60 + seconds
+}
+
+function formatTotal(totalSeconds: number) {
+  const totalMinutes = Math.round(totalSeconds / 60)
+  if (totalMinutes <= 0) return null
+  if (totalMinutes < 60) return `${totalMinutes} min`
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes > 0 ? `${hours} hr ${minutes} min` : `${hours} hr`
+}
+
+const albumRows = albums.map((album) => {
+  const tracks = tracksByAlbum.get(album.id) ?? []
+  const totalSeconds = tracks.reduce(
+    (sum, track) => sum + parseDuration(track.data.duration),
+    0,
+  )
+  const year = album.data.releaseDate
+    ? album.data.releaseDate.toLocaleDateString("en-US", {
+        timeZone: "UTC",
+        year: "numeric",
+      })
+    : null
+
+  const meta = [
+    "Album",
+    year,
+    tracks.length > 0
+      ? `${tracks.length} track${tracks.length === 1 ? "" : "s"}`
+      : null,
+    formatTotal(totalSeconds),
+  ]
+    .filter(Boolean)
+    .join(" • ")
+
+  return { album, meta }
+})
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width" />
-    <title>Albums</title>
-  </head>
-  <body>
-    <main>
-      <p><a href="/">Music Library</a></p>
-      <h1>Albums</h1>
-      {
-        albums.length > 0 ? (
-          <ul>
-            {albums.map((album) => (
-              <li>
-                <a href={`/albums/${album.id}/`}>{album.data.title}</a>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>No albums found.</p>
-        )
-      }
-    </main>
-  </body>
-</html>
+<Layout title="Albums">
+  <Nav />
+
+  <section class="albums-page">
+    <h1 class="page-title">Albums</h1>
+    {
+      albumRows.length > 0 ? (
+        <div class="album-list">
+          {albumRows.map(({ album, meta }) => (
+            <a class="album-row" href={`/albums/${album.id}/`}>
+              <div class="title">{album.data.title}</div>
+              <div class="meta">{meta}</div>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p class="empty">No albums found.</p>
+      )
+    }
+  </section>
+
+  <footer class="site-footer">
+    <Socials />
+  </footer>
+</Layout>
+
+<style>
+  .albums-page {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 56px 28px 80px;
+  }
+  .page-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+  }
+  .empty {
+    margin-top: 20px;
+    color: var(--ash);
+  }
+  .album-list {
+    margin-top: 28px;
+    border-top: 1px solid var(--line);
+  }
+  .album-row {
+    display: block;
+    padding: 18px 2px;
+    border-bottom: 1px solid var(--line);
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s;
+  }
+  .album-row:hover {
+    border-color: var(--dusk);
+  }
+  .album-row .title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.2rem;
+    transition: color 0.15s;
+  }
+  .album-row:hover .title {
+    color: var(--dusk);
+  }
+  .album-row .meta {
+    margin-top: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ash);
+    transition: color 0.15s;
+  }
+  .album-row:hover .meta {
+    color: var(--flare);
+  }
+
+  .site-footer {
+    padding: 32px 28px;
+    background: var(--static);
+  }
+</style>

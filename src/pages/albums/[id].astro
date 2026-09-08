@@ -1,4 +1,7 @@
 ---
+import Layout from "../../layouts/Layout.astro"
+import Nav from "../../components/Nav.astro"
+import Socials from "../../components/Socials.astro"
 import { getCollection } from "astro:content"
 import type { CollectionEntry } from "astro:content"
 
@@ -21,58 +24,141 @@ const tracks = (
 ).sort((a, b) => a.data.trackNumber - b.data.trackNumber)
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width" />
-    <title>{album.data.title} | Albums</title>
-  </head>
-  <body>
-    <main>
-      <p><a href="/albums/">Back to albums</a></p>
-      {
-        album.data.cover && (
-          <img
-            src={album.data.cover}
-            alt={`${album.data.title} cover`}
-            width="320"
-            height="320"
-          />
-        )
-      }
-      <h1>{album.data.title}</h1>
-      <p>By {album.data.artist}</p>
-      {
-        album.data.releaseDate && (
-          <p>
-            Released{" "}
-            <time datetime={album.data.releaseDate.toISOString()}>
-              {album.data.releaseDate.toLocaleDateString("en-US", {
-                timeZone: "UTC",
-              })}
-            </time>
-          </p>
-        )
-      }
-      <h2>Tracks</h2>
-      {
-        tracks.length > 0 ? (
-          <ol>
-            {tracks.map((track) => (
-              <li>
-                <span>{track.data.title}</span>
-                {track.data.duration && <span> ({track.data.duration})</span>}
-                {track.data.audioUrl && (
-                  <a href={track.data.audioUrl}> Listen</a>
-                )}
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p>No tracks found.</p>
-        )
-      }
-    </main>
-  </body>
-</html>
+<Layout title={`${album.data.title} | Albums`}>
+  <Nav />
+
+  <section class="album-page">
+    <a class="back" href="/albums/">
+      ← Back to albums
+    </a>
+
+    <h1 class="title">{album.data.title}</h1>
+    <p class="byline">By {album.data.artist}</p>
+    {
+      album.data.releaseDate && (
+        <p class="release-date">
+          Released{" "}
+          <time datetime={album.data.releaseDate.toISOString()}>
+            {album.data.releaseDate.toLocaleDateString("en-US", {
+              timeZone: "UTC",
+            })}
+          </time>
+        </p>
+      )
+    }
+
+    <h2 class="tracks-title">Tracks</h2>
+    {
+      tracks.length > 0 ? (
+        <ol class="tracklist">
+          {tracks.map((track) => (
+            <li class="track-row">
+              <span class="track-title">{track.data.title}</span>
+              {track.data.duration && (
+                <span class="track-duration">{track.data.duration}</span>
+              )}
+              {track.data.audioUrl && (
+                <a class="listen" href={track.data.audioUrl}>
+                  Listen
+                </a>
+              )}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p class="empty">No tracks found.</p>
+      )
+    }
+  </section>
+
+  <footer class="site-footer">
+    <Socials />
+  </footer>
+</Layout>
+
+<style>
+  .album-page {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 56px 28px 80px;
+  }
+  .back {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--dusk);
+    text-decoration: none;
+    border-bottom: 1px solid var(--dusk);
+    padding-bottom: 2px;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .back:hover {
+    color: var(--flare);
+    border-color: var(--flare);
+  }
+  .title {
+    margin-top: 24px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+  }
+  .byline {
+    margin-top: 8px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--ash);
+  }
+  .release-date {
+    margin-top: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ash-dim);
+  }
+  .tracks-title {
+    margin-top: 40px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.2rem;
+  }
+  .empty {
+    margin-top: 16px;
+    color: var(--ash);
+  }
+  .tracklist {
+    list-style: none;
+    margin: 20px 0 0;
+    padding: 0;
+    border-top: 1px solid var(--line);
+  }
+  .track-row {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding: 12px 2px;
+    border-bottom: 1px solid var(--line);
+  }
+  .track-title {
+    flex: 1;
+  }
+  .track-duration {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--ash);
+  }
+  .listen {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--dusk);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  .listen:hover {
+    color: var(--flare);
+  }
+
+  .site-footer {
+    padding: 32px 28px;
+    background: var(--static);
+  }
+</style>
