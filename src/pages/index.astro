@@ -37,9 +37,8 @@ const latest = albums[0]
         )
       }
     </div>
+    <div class="divider" aria-hidden="true"></div>
   </section>
-
-  <div class="divider" aria-hidden="true"></div>
 
   <section class="about">
     <div class="about-content">
@@ -167,6 +166,11 @@ const latest = albums[0]
 
   /* angular cut between the hero and the about section — cyberpunk.net cue */
   .divider {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
     height: 28px;
     background: var(--static-2);
     clip-path: polygon(0 100%, 100% 0%, 100% 100%);
