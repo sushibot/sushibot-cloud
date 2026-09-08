@@ -3,7 +3,6 @@ import Layout from "../layouts/Layout.astro"
 import Nav from "../components/Nav.astro"
 import Socials from "../components/Socials.astro"
 import { getCollection } from "astro:content"
-import type { CollectionEntry } from "astro:content"
 
 const albums = (await getCollection("albums")).sort((a, b) => {
   const aReleaseDate = a.data.releaseDate?.valueOf() ?? 0
@@ -13,25 +12,6 @@ const albums = (await getCollection("albums")).sort((a, b) => {
 })
 
 const latest = albums[0]
-
-const allTracks = await getCollection("tracks")
-const trackCountByAlbum = new Map<string, number>()
-for (const track of allTracks) {
-  const albumId = track.data.album.id
-  trackCountByAlbum.set(albumId, (trackCountByAlbum.get(albumId) ?? 0) + 1)
-}
-
-function releaseMeta(album: CollectionEntry<"albums">) {
-  const dateStr = album.data.releaseDate
-    ? album.data.releaseDate.toLocaleDateString("en-US", { timeZone: "UTC" })
-    : null
-  const count = trackCountByAlbum.get(album.id) ?? 0
-  const countStr = count > 0 ? `${count} track${count === 1 ? "" : "s"}` : null
-
-  return [dateStr, countStr].filter(Boolean).join(" — ")
-}
-
-const latestMeta = latest ? releaseMeta(latest) : ""
 ---
 
 <Layout title="Music Library">
@@ -60,20 +40,6 @@ const latestMeta = latest ? releaseMeta(latest) : ""
   </section>
 
   <div class="divider" aria-hidden="true"></div>
-
-  {
-    latest && (
-      <section class="latest">
-        <div class="meta">
-          <div class="title">{latest.data.title}</div>
-          <div class="by">{latestMeta}</div>
-        </div>
-        <a class="view" href={`/albums/${latest.id}/`}>
-          View release →
-        </a>
-      </section>
-    )
-  }
 
   <section class="about">
     <div class="about-content">
@@ -199,57 +165,11 @@ const latestMeta = latest ? releaseMeta(latest) : ""
     border-color: var(--flare);
   }
 
-  /* angular cut between the hero and the latest-release strip — cyberpunk.net cue */
+  /* angular cut between the hero and the about section — cyberpunk.net cue */
   .divider {
     height: 28px;
     background: var(--static-2);
     clip-path: polygon(0 100%, 100% 0%, 100% 100%);
-  }
-
-  .latest {
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    padding: 26px 28px;
-    background: var(--static);
-    border-bottom: 1px solid var(--line);
-  }
-  .latest .title {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1.4rem;
-  }
-  .latest .by {
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
-    color: var(--ash);
-    margin-top: 4px;
-  }
-  .latest .view {
-    margin-left: auto;
-    flex: none;
-    font-family: var(--font-mono);
-    font-size: 0.85rem;
-    color: var(--dusk);
-    text-decoration: none;
-    border-bottom: 1px solid var(--dusk);
-    padding-bottom: 2px;
-    transition:
-      color 0.15s,
-      border-color 0.15s;
-  }
-  .latest .view:hover {
-    color: var(--flare);
-    border-color: var(--flare);
-  }
-  @media (max-width: 560px) {
-    .latest {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-    .latest .view {
-      margin-left: 0;
-    }
   }
 
   .about {
