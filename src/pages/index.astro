@@ -2,16 +2,6 @@
 import Layout from "../layouts/Layout.astro"
 import Nav from "../components/Nav.astro"
 import Socials from "../components/Socials.astro"
-import { getCollection } from "astro:content"
-
-const albums = (await getCollection("albums")).sort((a, b) => {
-  const aReleaseDate = a.data.releaseDate?.valueOf() ?? 0
-  const bReleaseDate = b.data.releaseDate?.valueOf() ?? 0
-
-  return bReleaseDate - aReleaseDate
-})
-
-const latest = albums[0]
 ---
 
 <Layout title="Music Library">
@@ -29,13 +19,7 @@ const latest = albums[0]
       <p class="tagline">
 			Genres: Electronic, Big Room, Liquid DnB, Hardstyle, Techno, IDM, ???, no AI generated music slop.
       </p>
-      {
-        latest && (
-          <a class="cta" href={`/albums/${latest.id}/`}>
-            [ Listen to {latest.data.title} → ]
-          </a>
-        )
-      }
+      <a class="cta" href="/albums/">[ Access the archive → ]</a>
     </div>
     <div class="divider" aria-hidden="true"></div>
   </section>
