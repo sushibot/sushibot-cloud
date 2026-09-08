@@ -1,7 +1,6 @@
 ---
 import Layout from "../../layouts/Layout.astro"
 import Nav from "../../components/Nav.astro"
-import Socials from "../../components/Socials.astro"
 import { getCollection } from "astro:content"
 import type { CollectionEntry } from "astro:content"
 
@@ -74,10 +73,6 @@ const tracks = (
       )
     }
   </section>
-
-  <footer class="site-footer">
-    <Socials />
-  </footer>
 
   <script
     type="application/json"
@@ -201,10 +196,5 @@ const tracks = (
   }
   .listen:hover {
     color: var(--flare);
-  }
-
-  .site-footer {
-    padding: 32px 28px;
-    background: var(--static);
   }
 </style>
