@@ -193,9 +193,23 @@
 </div>
 
 <script>
+  // body isn't a transition:persist element -- Astro replaces it with a
+  // fresh node (no classes) on every navigation, unlike #player-bar
+  // itself, which really does survive. Re-sync body's padding to the
+  // bar's actual (persisted) state on every page load so a track
+  // loaded on an earlier page doesn't leave a stale gap.
+  function syncBodyPadding(bar: HTMLElement) {
+    document.body.classList.toggle(
+      "player-active",
+      bar.classList.contains("has-track"),
+    )
+  }
+
   function initPlayerBar() {
     const bar = document.getElementById("player-bar")
-    if (!bar || bar.dataset.initialized === "true") return
+    if (!bar) return
+    syncBodyPadding(bar)
+    if (bar.dataset.initialized === "true") return
     bar.dataset.initialized = "true"
 
     const audio = document.getElementById("player-audio") as HTMLAudioElement
@@ -362,6 +376,7 @@
       if (!track) return
       index = newIndex
       bar.classList.add("has-track")
+      syncBodyPadding(bar)
       npTitle.textContent = track.title
       npAlbum.textContent = track.album ?? ""
       if (track.albumId) {
@@ -558,6 +573,19 @@
     height: 84px;
     background: var(--static);
     border-top: 1px solid var(--line);
+    /* Hidden until a track is selected, on every screen size -- slide
+       off-screen instead of display:none, since toggling display on a
+       position:fixed element can leave Safari's fixed-position cache
+       stale until a forced reflow (reads as the bar losing its bottom
+       anchor and drifting with scroll). Staying in the fixed render
+       tree the whole time avoids that. */
+    transform: translateY(100%);
+    transition: transform 0.2s ease;
+    pointer-events: none;
+  }
+  .player-bar.has-track {
+    transform: translateY(0);
+    pointer-events: auto;
   }
   /* mobile-only stand-in for the draggable seek input -- a plain,
      non-interactive progress line pinned to the top edge of the bar */
@@ -830,20 +858,6 @@
   }
 
   @media (max-width: 680px) {
-    .player-bar {
-      /* Slide off-screen instead of display:none -- toggling
-         display on a position:fixed element can leave Safari's fixed-
-         position cache stale until a forced reflow, which reads as
-         the bar losing its bottom anchor and drifting with scroll.
-         Staying in the fixed render tree the whole time avoids that. */
-      transform: translateY(100%);
-      transition: transform 0.2s ease;
-      pointer-events: none;
-    }
-    .player-bar.has-track {
-      transform: translateY(0);
-      pointer-events: auto;
-    }
     .vol {
       display: none;
     }

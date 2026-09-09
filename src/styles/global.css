@@ -43,13 +43,22 @@ html {
 
 body {
   margin: 0;
-  padding-bottom: 84px; /* clears the fixed PlayerBar (src/components/PlayerBar.astro) */
+  padding-bottom: 0;
   background: var(--void);
   color: var(--bone);
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.6;
   position: relative;
+  transition: padding-bottom 0.2s ease;
+}
+/* Reserves space for the fixed PlayerBar (src/components/PlayerBar.astro)
+   only once a track has actually been selected -- .player-active is
+   kept in sync with it via JS, since body itself isn't a
+   transition:persist element and gets a fresh (unclassed) node on
+   every page navigation. */
+body.player-active {
+  padding-bottom: 84px;
 }
 
 /* page-wide static grain — texture only, never animated */
