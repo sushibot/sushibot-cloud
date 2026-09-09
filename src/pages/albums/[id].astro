@@ -87,6 +87,7 @@ const tracks = (
         .map((track) => ({
           title: track.data.title,
           album: album.data.title,
+          albumId: album.id,
           audioUrl: track.data.audioUrl,
         })),
     )}
@@ -100,7 +101,12 @@ const tracks = (
     if (!list || !queueEl || list.dataset.initialized === "true") return
     list.dataset.initialized = "true"
 
-    let queue: { title: string; album?: string; audioUrl: string }[] = []
+    let queue: {
+      title: string
+      album?: string
+      albumId?: string
+      audioUrl: string
+    }[] = []
     try {
       queue = JSON.parse(queueEl.textContent ?? "[]")
     } catch {

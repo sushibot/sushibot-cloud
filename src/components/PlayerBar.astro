@@ -12,7 +12,7 @@
   <div class="player-inner">
     <div class="np">
       <div class="np-title" id="np-title"></div>
-      <div class="np-album" id="np-album"></div>
+      <a class="np-album" id="np-album"></a>
     </div>
 
     <div class="transport">
@@ -127,7 +127,7 @@
     const curTimeEl = document.getElementById("cur-time") as HTMLSpanElement
     const totTimeEl = document.getElementById("tot-time") as HTMLSpanElement
     const npTitle = document.getElementById("np-title") as HTMLDivElement
-    const npAlbum = document.getElementById("np-album") as HTMLDivElement
+    const npAlbum = document.getElementById("np-album") as HTMLAnchorElement
     const muteBtn = document.getElementById("mute-btn") as HTMLButtonElement
     const volIconOn = document.getElementById("vol-icon-on") as SVGElement
     const volIconOff = document.getElementById("vol-icon-off") as SVGElement
@@ -152,7 +152,12 @@
       return
     }
 
-    type QueueTrack = { title: string; album?: string; audioUrl: string }
+    type QueueTrack = {
+      title: string
+      album?: string
+      albumId?: string
+      audioUrl: string
+    }
 
     let queue: QueueTrack[] = []
     let index = -1
@@ -200,6 +205,11 @@
       index = newIndex
       npTitle.textContent = track.title
       npAlbum.textContent = track.album ?? ""
+      if (track.albumId) {
+        npAlbum.href = `/albums/${track.albumId}/`
+      } else {
+        npAlbum.removeAttribute("href")
+      }
       audio.src = track.audioUrl
       audio.play().catch(() => {})
       playBtn.disabled = false
@@ -207,10 +217,31 @@
       updateNav()
     }
 
-    playBtn.addEventListener("click", () => {
+    function togglePlayback() {
       if (!audio.src) return
       if (audio.paused) audio.play()
       else audio.pause()
+    }
+
+    playBtn.addEventListener("click", togglePlayback)
+
+    document.addEventListener("keydown", (event) => {
+      if (event.code !== "Space" && event.key !== " ") return
+      if (!audio.src) return
+
+      const target = event.target as HTMLElement | null
+      const tag = target?.tagName
+      const isFormField =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        tag === "BUTTON" ||
+        target?.isContentEditable
+
+      if (isFormField) return
+
+      event.preventDefault()
+      togglePlayback()
     })
 
     prevBtn.addEventListener("click", () => {
@@ -319,13 +350,20 @@
     text-overflow: ellipsis;
   }
   .np-album {
+    display: block;
     font-family: var(--font-mono);
     font-size: 0.68rem;
     color: var(--ash);
+    text-decoration: none;
     margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    transition: color 0.15s;
+  }
+  .np-album[href]:hover {
+    color: var(--flare);
+    text-decoration: underline;
   }
 
   .transport {
