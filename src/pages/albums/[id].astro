@@ -52,18 +52,22 @@ const tracks = (
         <ol class="tracklist" id="tracklist">
           {tracks.map((track, i) => (
             <li class="track-row">
+              <span class="track-index">
+                <span class="track-number">{track.data.trackNumber}</span>
+                {track.data.audioUrl && (
+                  <a
+                    class="track-play"
+                    href={track.data.audioUrl}
+                    data-index={i}
+                    aria-label={`Play ${track.data.title}`}
+                  >
+                    <span class="ic-play-mini"></span>
+                  </a>
+                )}
+              </span>
               <span class="track-title">{track.data.title}</span>
               {track.data.duration && (
                 <span class="track-duration">{track.data.duration}</span>
-              )}
-              {track.data.audioUrl && (
-                <a
-                  class="listen"
-                  href={track.data.audioUrl}
-                  data-index={i}
-                >
-                  Play
-                </a>
               )}
             </li>
           ))}
@@ -103,7 +107,7 @@ const tracks = (
       queue = []
     }
 
-    list.querySelectorAll<HTMLAnchorElement>(".listen").forEach((link) => {
+    list.querySelectorAll<HTMLAnchorElement>(".track-play").forEach((link) => {
       link.addEventListener("click", (event) => {
         event.preventDefault()
         const index = Number(link.dataset.index)
@@ -174,10 +178,54 @@ const tracks = (
   }
   .track-row {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 14px;
-    padding: 12px 2px;
+    padding: 12px 10px;
+    margin: 0 -10px;
     border-bottom: 1px solid var(--line);
+    border-radius: 2px;
+    transition: background-color 0.15s;
+  }
+  .track-row:hover {
+    background-color: var(--static);
+  }
+  .track-index {
+    position: relative;
+    width: 1.4em;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .track-number {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--ash-dim);
+    font-variant-numeric: tabular-nums;
+    transition: opacity 0.1s;
+  }
+  .track-play {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: var(--bone);
+    text-decoration: none;
+  }
+  .track-row:hover .track-number {
+    opacity: 0;
+  }
+  .track-row:hover .track-play {
+    display: flex;
+  }
+  .ic-play-mini {
+    width: 0;
+    height: 0;
+    margin-left: 1px;
+    border-style: solid;
+    border-width: 5px 0 5px 8px;
+    border-color: transparent transparent transparent currentColor;
   }
   .track-title {
     flex: 1;
@@ -186,15 +234,5 @@ const tracks = (
     font-family: var(--font-mono);
     font-size: 0.85rem;
     color: var(--ash);
-  }
-  .listen {
-    font-family: var(--font-mono);
-    font-size: 0.85rem;
-    color: var(--dusk);
-    text-decoration: none;
-    transition: color 0.15s;
-  }
-  .listen:hover {
-    color: var(--flare);
   }
 </style>
