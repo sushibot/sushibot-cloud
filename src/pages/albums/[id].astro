@@ -19,11 +19,14 @@ type Props = {
 
 const { album } = Astro.props
 const tracks = (
-  await getCollection("tracks", ({ data }) => data.album.id === album.id)
+  await getCollection(
+    "tracks",
+    ({ data }) => data.album.id === album.id && data.display,
+  )
 ).sort((a, b) => a.data.trackNumber - b.data.trackNumber)
 ---
 
-<Layout title={`${album.data.title} | Albums`}>
+<Layout>
   <Nav />
 
   <section class="album-page">
