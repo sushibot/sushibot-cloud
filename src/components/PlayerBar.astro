@@ -9,6 +9,10 @@
 >
   <audio id="player-audio" preload="none"></audio>
 
+  <div class="progress-border" id="progress-border" aria-hidden="true">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+
   <div class="player-inner">
     <div class="np">
       <div class="np-title" id="np-title"></div>
@@ -132,6 +136,9 @@
     const volIconOn = document.getElementById("vol-icon-on") as SVGElement
     const volIconOff = document.getElementById("vol-icon-off") as SVGElement
     const volume = document.getElementById("volume") as HTMLInputElement
+    const progressFill = document.getElementById(
+      "progress-fill",
+    ) as HTMLDivElement
 
     if (
       !audio ||
@@ -147,7 +154,8 @@
       !muteBtn ||
       !volIconOn ||
       !volIconOff ||
-      !volume
+      !volume ||
+      !progressFill
     ) {
       return
     }
@@ -176,6 +184,14 @@
       const value = Number(input.value)
       const pct = max > min ? ((value - min) / (max - min)) * 100 : 0
       input.style.setProperty("--progress", `${pct}%`)
+      return pct
+    }
+
+    // Mobile shows a plain progress line instead of the draggable seek
+    // input; keep both in sync from the same seek-input calculation.
+    function syncSeekProgress() {
+      const pct = setRangeProgress(seek)
+      progressFill.style.width = `${pct}%`
     }
 
     function updatePlayIcon() {
@@ -270,14 +286,14 @@
       curTimeEl.textContent = fmt(audio.currentTime)
       if (audio.duration) {
         seek.value = String(Math.floor(audio.currentTime * 1000))
-        setRangeProgress(seek)
+        syncSeekProgress()
       }
     })
 
     seek.addEventListener("input", () => {
       isSeeking = true
       curTimeEl.textContent = fmt(Number(seek.value) / 1000)
-      setRangeProgress(seek)
+      syncSeekProgress()
     })
     seek.addEventListener("change", () => {
       audio.currentTime = Number(seek.value) / 1000
@@ -306,7 +322,7 @@
 
     audio.volume = Number(volume.value) / 100
     setRangeProgress(volume)
-    setRangeProgress(seek)
+    syncSeekProgress()
     updateVolIcon()
     updatePlayIcon()
     updateNav()
@@ -325,6 +341,22 @@
     height: 84px;
     background: var(--static);
     border-top: 1px solid var(--line);
+  }
+  /* mobile-only stand-in for the draggable seek input -- a plain,
+     non-interactive progress line pinned to the top edge of the bar */
+  .progress-border {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--line);
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--dusk);
   }
   .player-inner {
     max-width: 1080px;
@@ -584,8 +616,15 @@
     .vol {
       display: none;
     }
-    .scrub .time {
+    .scrub {
       display: none;
+    }
+    #prev-btn,
+    #next-btn {
+      display: none;
+    }
+    .progress-border {
+      display: block;
     }
     .player-inner {
       grid-template-columns: 1fr auto;
