@@ -23,6 +23,7 @@ const tracks = defineCollection({
 
 	schema: z.object({
 		title: z.string(),
+		displayTitle: z.string().optional(),
 		album: reference("albums"),
 		trackNumber: z.number().int().positive(),
 		duration: z.string().optional(),

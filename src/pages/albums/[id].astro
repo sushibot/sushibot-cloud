@@ -27,9 +27,7 @@ const tracks = (
   <Nav />
 
   <section class="album-page">
-    <a class="back" href="/albums/">
-      ← Back to albums
-    </a>
+    <a class="back" href="/albums/"> ← Back to albums </a>
 
     <h1 class="title">{album.data.title}</h1>
     <p class="byline">By {album.data.artist}</p>
@@ -50,28 +48,31 @@ const tracks = (
     {
       tracks.length > 0 ? (
         <ol class="tracklist" id="tracklist">
-          {tracks.map((track, i) => (
-            <li class="track-row">
-              <span class="track-index">
-                <span class="track-number">{track.data.trackNumber}</span>
-                {track.data.audioUrl && (
-                  <a
-                    class="track-play"
-                    href={track.data.audioUrl}
-                    data-index={i}
-                    data-audio-url={track.data.audioUrl}
-                    aria-label={`Play ${track.data.title}`}
-                  >
-                    <span class="ic-track-icon ic-play-mini"></span>
-                  </a>
+          {tracks.map((track, i) => {
+            const displayTitle = track.data.displayTitle ?? track.data.title
+            return (
+              <li class="track-row">
+                <span class="track-index">
+                  <span class="track-number">{track.data.trackNumber}</span>
+                  {track.data.audioUrl && (
+                    <a
+                      class="track-play"
+                      href={track.data.audioUrl}
+                      data-index={i}
+                      data-audio-url={track.data.audioUrl}
+                      aria-label={`Play ${displayTitle}`}
+                    >
+                      <span class="ic-track-icon ic-play-mini" />
+                    </a>
+                  )}
+                </span>
+                <span class="track-title">{displayTitle}</span>
+                {track.data.duration && (
+                  <span class="track-duration">{track.data.duration}</span>
                 )}
-              </span>
-              <span class="track-title">{track.data.title}</span>
-              {track.data.duration && (
-                <span class="track-duration">{track.data.duration}</span>
-              )}
-            </li>
-          ))}
+              </li>
+            )
+          })}
         </ol>
       ) : (
         <p class="empty">No tracks found.</p>
@@ -86,7 +87,7 @@ const tracks = (
       tracks
         .filter((track) => track.data.audioUrl)
         .map((track) => ({
-          title: track.data.title,
+          title: track.data.displayTitle ?? track.data.title,
           album: album.data.title,
           albumId: album.id,
           audioUrl: track.data.audioUrl,

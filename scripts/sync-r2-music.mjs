@@ -220,14 +220,30 @@ async function writeYearContent(year, tracks) {
 	const tracksDir = path.join(REPO_ROOT, "src/content/tracks", year)
 	await mkdir(tracksDir, { recursive: true })
 	const existing = await readdir(tracksDir).catch(() => [])
-	await Promise.all(existing.filter((f) => f.endsWith(".json")).map((f) => unlink(path.join(tracksDir, f))))
+	const existingJson = existing.filter((f) => f.endsWith(".json"))
+
+	const displayTitlesBySlug = new Map()
+	for (const f of existingJson) {
+		try {
+			const parsed = JSON.parse(await readFile(path.join(tracksDir, f), "utf8"))
+			if (parsed.displayTitle) {
+				displayTitlesBySlug.set(path.basename(f, ".json"), parsed.displayTitle)
+			}
+		} catch {
+			// ignore unreadable/malformed existing file, it'll just be overwritten below
+		}
+	}
+
+	await Promise.all(existingJson.map((f) => unlink(path.join(tracksDir, f))))
 
 	for (const t of tracks) {
+		const displayTitle = displayTitlesBySlug.get(t.slug)
 		await writeFile(
 			path.join(tracksDir, `${t.slug}.json`),
 			JSON.stringify(
 				{
 					title: t.title,
+					...(displayTitle ? { displayTitle } : {}),
 					album: String(year),
 					trackNumber: t.trackNumber,
 					...(t.duration ? { duration: t.duration } : {}),

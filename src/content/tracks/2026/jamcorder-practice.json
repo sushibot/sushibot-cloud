@@ -1,6 +1,8 @@
 {
   "title": "JamCorder_Practice",
+  "displayTitle": "JamCorder_Practice",
   "album": "2026",
+	"display": false,
   "trackNumber": 7,
   "duration": "21:14",
   "audioUrl": "https://pub-698e1d4bc0b741bc9e3e3863401f2086.r2.dev/web/2026/jamcorder-practice.mp3"
