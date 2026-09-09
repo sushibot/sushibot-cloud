@@ -222,12 +222,15 @@ async function writeYearContent(year, tracks) {
 	const existing = await readdir(tracksDir).catch(() => [])
 	const existingJson = existing.filter((f) => f.endsWith(".json"))
 
-	const displayTitlesBySlug = new Map()
+	const preservedBySlug = new Map()
 	for (const f of existingJson) {
 		try {
 			const parsed = JSON.parse(await readFile(path.join(tracksDir, f), "utf8"))
-			if (parsed.displayTitle) {
-				displayTitlesBySlug.set(path.basename(f, ".json"), parsed.displayTitle)
+			const preserved = {}
+			if (parsed.displayTitle) preserved.displayTitle = parsed.displayTitle
+			if (parsed.display === false) preserved.display = false
+			if (Object.keys(preserved).length > 0) {
+				preservedBySlug.set(path.basename(f, ".json"), preserved)
 			}
 		} catch {
 			// ignore unreadable/malformed existing file, it'll just be overwritten below
@@ -237,13 +240,14 @@ async function writeYearContent(year, tracks) {
 	await Promise.all(existingJson.map((f) => unlink(path.join(tracksDir, f))))
 
 	for (const t of tracks) {
-		const displayTitle = displayTitlesBySlug.get(t.slug)
+		const preserved = preservedBySlug.get(t.slug) ?? {}
 		await writeFile(
 			path.join(tracksDir, `${t.slug}.json`),
 			JSON.stringify(
 				{
 					title: t.title,
-					...(displayTitle ? { displayTitle } : {}),
+					...(preserved.displayTitle ? { displayTitle: preserved.displayTitle } : {}),
+					...(preserved.display === false ? { display: false } : {}),
 					album: String(year),
 					trackNumber: t.trackNumber,
 					...(t.duration ? { duration: t.duration } : {}),

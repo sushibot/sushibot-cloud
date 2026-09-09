@@ -24,6 +24,7 @@ const tracks = defineCollection({
 	schema: z.object({
 		title: z.string(),
 		displayTitle: z.string().optional(),
+		display: z.boolean().default(true),
 		album: reference("albums"),
 		trackNumber: z.number().int().positive(),
 		duration: z.string().optional(),

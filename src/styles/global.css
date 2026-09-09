@@ -28,6 +28,19 @@ html {
   color-scheme: dark;
 }
 
+/* Astro's ClientRouter (astro:transitions) is only here so the
+   PlayerBar's audio element can survive page navigation via
+   transition:persist -- the default browser cross-fade it applies to
+   the rest of the page is an unwanted side effect, not something we
+   want. Neutralizing the animation still keeps the router (and
+   persistence) intact; navigation just becomes instant again. */
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation: none !important;
+  mix-blend-mode: normal !important;
+}
+
 body {
   margin: 0;
   padding-bottom: 84px; /* clears the fixed PlayerBar (src/components/PlayerBar.astro) */
