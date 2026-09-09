@@ -59,9 +59,10 @@ const tracks = (
                     class="track-play"
                     href={track.data.audioUrl}
                     data-index={i}
+                    data-audio-url={track.data.audioUrl}
                     aria-label={`Play ${track.data.title}`}
                   >
-                    <span class="ic-play-mini"></span>
+                    <span class="ic-track-icon ic-play-mini"></span>
                   </a>
                 )}
               </span>
@@ -113,9 +114,42 @@ const tracks = (
       queue = []
     }
 
+    let activeAudioUrl: string | null = null
+    let activePlaying = false
+
+    function applyState() {
+      list?.querySelectorAll<HTMLLIElement>(".track-row").forEach((row) => {
+        const link = row.querySelector<HTMLAnchorElement>(".track-play")
+        const icon = row.querySelector<HTMLSpanElement>(".ic-track-icon")
+        const isActive =
+          !!activeAudioUrl && link?.dataset.audioUrl === activeAudioUrl
+
+        row.classList.toggle("is-active", isActive)
+        if (icon) {
+          icon.className =
+            isActive && activePlaying
+              ? "ic-track-icon ic-pause-mini"
+              : "ic-track-icon ic-play-mini"
+        }
+      })
+    }
+
+    document.addEventListener("player:state", ((event: CustomEvent) => {
+      const detail = event.detail ?? {}
+      activeAudioUrl = detail.audioUrl ?? null
+      activePlaying = !!detail.playing
+      applyState()
+    }) as EventListener)
+
+    document.dispatchEvent(new CustomEvent("player:query"))
+
     list.querySelectorAll<HTMLAnchorElement>(".track-play").forEach((link) => {
       link.addEventListener("click", (event) => {
         event.preventDefault()
+        if (link.dataset.audioUrl === activeAudioUrl) {
+          document.dispatchEvent(new CustomEvent("player:toggle"))
+          return
+        }
         const index = Number(link.dataset.index)
         document.dispatchEvent(
           new CustomEvent("player:play", { detail: { queue, index } }),
@@ -232,6 +266,27 @@ const tracks = (
     border-style: solid;
     border-width: 5px 0 5px 8px;
     border-color: transparent transparent transparent currentColor;
+  }
+  .ic-pause-mini {
+    width: 8px;
+    height: 10px;
+    background-image: linear-gradient(
+      90deg,
+      currentColor 0 35%,
+      transparent 35% 65%,
+      currentColor 65% 100%
+    );
+  }
+  .track-row.is-active .track-number,
+  .track-row.is-active .track-title {
+    color: var(--dusk);
+  }
+  .track-row.is-active .track-number {
+    opacity: 0;
+  }
+  .track-row.is-active .track-play {
+    display: flex;
+    color: var(--dusk);
   }
   .track-title {
     flex: 1;

@@ -197,6 +197,24 @@
     function updatePlayIcon() {
       playIcon.className = audio.paused ? "ic-play" : "ic-pause"
       playBtn.setAttribute("aria-label", audio.paused ? "Play" : "Pause")
+      emitState()
+    }
+
+    // Lets any page's tracklist know which track (by audioUrl) is
+    // currently loaded and whether it's playing, so it can highlight
+    // the matching row -- broadcast on every load/play/pause, and also
+    // on request (a freshly-loaded page asks via "player:query" since
+    // it can't see this closure's state directly).
+    function emitState() {
+      const current = index >= 0 ? queue[index] : null
+      document.dispatchEvent(
+        new CustomEvent("player:state", {
+          detail: {
+            audioUrl: current?.audioUrl ?? null,
+            playing: !audio.paused,
+          },
+        }),
+      )
     }
 
     function updateNav() {
@@ -219,6 +237,7 @@
       const track = queue[newIndex]
       if (!track) return
       index = newIndex
+      bar.classList.add("has-track")
       npTitle.textContent = track.title
       npAlbum.textContent = track.album ?? ""
       if (track.albumId) {
@@ -231,6 +250,7 @@
       playBtn.disabled = false
       seek.disabled = false
       updateNav()
+      emitState()
     }
 
     function togglePlayback() {
@@ -319,6 +339,10 @@
       queue = detail.queue
       loadTrack(detail.index ?? 0)
     }) as EventListener)
+
+    document.addEventListener("player:toggle", togglePlayback)
+
+    document.addEventListener("player:query", emitState)
 
     audio.volume = Number(volume.value) / 100
     setRangeProgress(volume)
@@ -613,6 +637,12 @@
   }
 
   @media (max-width: 680px) {
+    .player-bar {
+      display: none;
+    }
+    .player-bar.has-track {
+      display: block;
+    }
     .vol {
       display: none;
     }
