@@ -147,17 +147,36 @@ const tracks = (
 
     document.dispatchEvent(new CustomEvent("player:query"))
 
-    list.querySelectorAll<HTMLAnchorElement>(".track-play").forEach((link) => {
-      link.addEventListener("click", (event) => {
-        event.preventDefault()
-        if (link.dataset.audioUrl === activeAudioUrl) {
-          document.dispatchEvent(new CustomEvent("player:toggle"))
-          return
-        }
-        const index = Number(link.dataset.index)
-        document.dispatchEvent(
-          new CustomEvent("player:play", { detail: { queue, index } }),
+    function isMobile() {
+      return window.matchMedia("(max-width: 680px)").matches
+    }
+
+    function playRow(row: HTMLLIElement) {
+      const link = row.querySelector<HTMLAnchorElement>(".track-play")
+      if (!link) return
+      if (link.dataset.audioUrl === activeAudioUrl) {
+        document.dispatchEvent(new CustomEvent("player:toggle"))
+        return
+      }
+      document.dispatchEvent(
+        new CustomEvent("player:play", {
+          detail: { queue, index: Number(link.dataset.index) },
+        }),
+      )
+    }
+
+    list.querySelectorAll<HTMLLIElement>(".track-row").forEach((row) => {
+      row.addEventListener("click", (event) => {
+        // Desktop only plays when the (hover-revealed) icon itself is
+        // clicked, same as before. Mobile has no real hover state, so
+        // the icon is never reachable there -- let a tap anywhere on
+        // the row play/toggle that track instead.
+        const onPlayIcon = !!(event.target as HTMLElement).closest(
+          ".track-play",
         )
+        if (!onPlayIcon && !isMobile()) return
+        event.preventDefault()
+        playRow(row)
       })
     })
   }
@@ -299,5 +318,11 @@ const tracks = (
     font-family: var(--font-mono);
     font-size: 0.85rem;
     color: var(--ash);
+  }
+
+  @media (max-width: 680px) {
+    .track-row {
+      cursor: pointer;
+    }
   }
 </style>
