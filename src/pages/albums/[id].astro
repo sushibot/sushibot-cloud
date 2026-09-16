@@ -90,6 +90,7 @@ const tracks = (
       tracks
         .filter((track) => track.data.audioUrl)
         .map((track) => ({
+          id: track.id.split("/").pop(),
           title: track.data.displayTitle ?? track.data.title,
           album: album.data.title,
           albumId: album.id,
@@ -107,6 +108,7 @@ const tracks = (
     list.dataset.initialized = "true"
 
     let queue: {
+      id?: string
       title: string
       album?: string
       albumId?: string
@@ -147,6 +149,22 @@ const tracks = (
 
     document.dispatchEvent(new CustomEvent("player:query"))
 
+    // Deep link support: ?track={slug} selects and loads that track
+    // into the player (same "active" highlight as normal) without
+    // starting playback, so a shared link previews rather than
+    // auto-plays.
+    const urlTrackId = new URLSearchParams(location.search).get("track")
+    if (urlTrackId) {
+      const urlIndex = queue.findIndex((track) => track.id === urlTrackId)
+      if (urlIndex !== -1) {
+        document.dispatchEvent(
+          new CustomEvent("player:play", {
+            detail: { queue, index: urlIndex, autoplay: false },
+          }),
+        )
+      }
+    }
+
     function isMobile() {
       return window.matchMedia("(max-width: 680px)").matches
     }
@@ -158,10 +176,15 @@ const tracks = (
         document.dispatchEvent(new CustomEvent("player:toggle"))
         return
       }
+      const index = Number(link.dataset.index)
+      const trackId = queue[index]?.id
+      if (trackId) {
+        const url = new URL(location.href)
+        url.searchParams.set("track", trackId)
+        history.replaceState(null, "", url)
+      }
       document.dispatchEvent(
-        new CustomEvent("player:play", {
-          detail: { queue, index: Number(link.dataset.index) },
-        }),
+        new CustomEvent("player:play", { detail: { queue, index } }),
       )
     }
 
