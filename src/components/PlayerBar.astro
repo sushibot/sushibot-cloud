@@ -340,7 +340,10 @@
     // currently loaded and whether it's playing, so it can highlight
     // the matching row -- broadcast on every load/play/pause, and also
     // on request (a freshly-loaded page asks via "player:query" since
-    // it can't see this closure's state directly).
+    // it can't see this closure's state directly). hasPrevious/hasNext
+    // reflect the same non-wrapping boundaries goToPrev(false)/
+    // goToNext(false) use, so a consumer can grey out its own next/
+    // previous controls without needing to see queue/index directly.
     function emitState() {
       const current = index >= 0 ? queue[index] : null
       document.dispatchEvent(
@@ -348,7 +351,20 @@
           detail: {
             audioUrl: current?.audioUrl ?? null,
             playing: !audio.paused,
+            hasPrevious: index > 0,
+            hasNext: index >= 0 && index < queue.length - 1,
           },
+        }),
+      )
+    }
+
+    // Broadcasts raw playback position on every timeupdate/loadedmetadata
+    // -- lets a consumer that isn't allowed to touch #player-audio
+    // directly (e.g. the concept page) still drive its own seek UI.
+    function emitProgress() {
+      document.dispatchEvent(
+        new CustomEvent("player:progress", {
+          detail: { currentTime: audio.currentTime, duration: audio.duration },
         }),
       )
     }
@@ -398,6 +414,13 @@
       if (drawerSeek) drawerSeek.disabled = false
       updateNav()
       emitState()
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: track.title,
+          artist: "Sushibot",
+          album: track.album ?? "",
+        })
+      }
     }
 
     function togglePlayback() {
@@ -464,20 +487,33 @@
       togglePlayback()
     })
 
-    function goToPrev() {
+    // wrap defaults to true, preserving every existing call site's
+    // behavior verbatim -- only the new player:prev/player:next
+    // listeners (and the Media Session action handlers) pass false,
+    // for controls that want a hard stop at the ends of the queue
+    // instead of cycling around.
+    function goToPrev(wrap = true) {
       if (queue.length === 0) return
-      loadTrack((index - 1 + queue.length) % queue.length)
+      if (index <= 0) {
+        if (wrap) loadTrack(queue.length - 1)
+        return
+      }
+      loadTrack(index - 1)
     }
 
-    function goToNext() {
+    function goToNext(wrap = true) {
       if (queue.length === 0) return
-      loadTrack((index + 1) % queue.length)
+      if (index >= queue.length - 1) {
+        if (wrap) loadTrack(0)
+        return
+      }
+      loadTrack(index + 1)
     }
 
-    prevBtn.addEventListener("click", goToPrev)
-    nextBtn.addEventListener("click", goToNext)
-    drawerPrevBtn?.addEventListener("click", goToPrev)
-    drawerNextBtn?.addEventListener("click", goToNext)
+    prevBtn.addEventListener("click", () => goToPrev())
+    nextBtn.addEventListener("click", () => goToNext())
+    drawerPrevBtn?.addEventListener("click", () => goToPrev())
+    drawerNextBtn?.addEventListener("click", () => goToNext())
 
     audio.addEventListener("play", updatePlayIcon)
     audio.addEventListener("pause", updatePlayIcon)
@@ -490,6 +526,8 @@
       seek.max = String(Math.floor(audio.duration * 1000))
       if (drawerTotTime) drawerTotTime.textContent = fmt(audio.duration)
       if (drawerSeek) drawerSeek.max = seek.max
+      emitProgress()
+      updateMediaSessionPosition()
     })
 
     audio.addEventListener("timeupdate", () => {
@@ -500,6 +538,8 @@
         seek.value = String(Math.floor(audio.currentTime * 1000))
         syncSeekProgress()
       }
+      emitProgress()
+      updateMediaSessionPosition()
     })
 
     seek.addEventListener("input", () => {
@@ -551,6 +591,70 @@
     document.addEventListener("player:toggle", togglePlayback)
 
     document.addEventListener("player:query", emitState)
+
+    // Non-wrapping queue navigation and direct seeking for a consumer
+    // that can't touch #player-audio itself (the concept page) --
+    // wraps the same goToPrev/goToNext/currentTime this component's
+    // own buttons and seek inputs already use, nothing duplicated.
+    document.addEventListener("player:prev", () => goToPrev(false))
+    document.addEventListener("player:next", () => goToNext(false))
+    document.addEventListener("player:seek", ((event: CustomEvent) => {
+      const detail = event.detail
+      if (!detail || typeof detail.time !== "number") return
+      audio.currentTime = detail.time
+    }) as EventListener)
+
+    // ---------- Media Session (lock screen / OS-level controls) ----------
+    // Feature-detected as a whole; setActionHandler itself is wrapped
+    // per-action since an unsupported action throws rather than
+    // failing silently, and one throwing shouldn't stop the rest from
+    // registering.
+    if ("mediaSession" in navigator) {
+      const setAction = (
+        action: MediaSessionAction,
+        handler: MediaSessionActionHandler,
+      ) => {
+        try {
+          navigator.mediaSession.setActionHandler(action, handler)
+        } catch {
+          // action unsupported on this UA -- ignore
+        }
+      }
+      setAction("play", () => {
+        audio.play().catch(() => {})
+      })
+      setAction("pause", () => audio.pause())
+      // Non-wrapping, matching the concept page's own next/previous --
+      // see the merge-debt note in select-music.astro's script about
+      // reconciling this with the wrapping desktop bar/drawer buttons.
+      setAction("previoustrack", () => goToPrev(false))
+      setAction("nexttrack", () => goToNext(false))
+      setAction("seekbackward", (details) => {
+        audio.currentTime = Math.max(0, audio.currentTime - (details.seekOffset ?? 10))
+      })
+      setAction("seekforward", (details) => {
+        const max = Number.isFinite(audio.duration) ? audio.duration : Infinity
+        audio.currentTime = Math.min(max, audio.currentTime + (details.seekOffset ?? 10))
+      })
+      setAction("seekto", (details) => {
+        if (typeof details.seekTime === "number") audio.currentTime = details.seekTime
+      })
+    }
+
+    function updateMediaSessionPosition() {
+      if (!("mediaSession" in navigator)) return
+      if (!("setPositionState" in navigator.mediaSession)) return
+      if (!Number.isFinite(audio.duration)) return
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: audio.duration,
+          playbackRate: audio.playbackRate,
+          position: audio.currentTime,
+        })
+      } catch {
+        // can throw transiently during a track swap -- ignore
+      }
+    }
 
     audio.volume = Number(volume.value) / 100
     setRangeProgress(volume)
