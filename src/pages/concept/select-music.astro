@@ -1310,6 +1310,26 @@ function folderYearLabel(folder: SerializedFolder) {
       openExpandedPlayer()
     })
 
+    // Measures the mini player's OWN rendered height (not a fixed
+    // constant) into --mini-player-h, which the list's bottom spacer
+    // and its bottom fade mask both read (see the mobile media
+    // query) -- keeps the reserved space correct as the bar's actual
+    // height changes (a longer title wrapping, a user's larger
+    // text-size setting), and lets it collapse back toward 0 once the
+    // bar is hidden again (getBoundingClientRect() reports a zero
+    // height for a display:none element). Called from the observer,
+    // and also explicitly right after toggling `hidden` in
+    // refreshPlaybackUI() rather than only waiting on the observer's
+    // own (slightly later) callback timing.
+    function measureMiniPlayerHeight() {
+      if (!page || !miniPlayerEl) return
+      const height = miniPlayerEl.getBoundingClientRect().height
+      page.style.setProperty("--mini-player-h", `${height}px`)
+    }
+    if (miniPlayerEl && "ResizeObserver" in window) {
+      new ResizeObserver(measureMiniPlayerHeight).observe(miniPlayerEl)
+    }
+
     function refreshPlaybackUI() {
       const mobile = isMobileMode()
 
@@ -1392,6 +1412,11 @@ function folderYearLabel(folder: SerializedFolder) {
       // instead of advancing, see handleNextClick()) -- dimmed, not
       // disabled.
       miniPlayerNextBtn?.classList.toggle("is-inactive", !hasNext)
+      // Measured here (after every content/hidden change above,
+      // rather than only waiting on the ResizeObserver's own slightly
+      // later callback) so the list's reserved space is correct the
+      // same frame the bar's visibility or title/album text changes.
+      measureMiniPlayerHeight()
 
       updateExpandedPlayerContent()
       if (expandedPlayIcon) {
@@ -3216,11 +3241,16 @@ function folderYearLabel(folder: SerializedFolder) {
 
   /* Docked mini player -- replaces the old status icon/now-playing
      pill. Hidden on desktop entirely (below); on mobile, hidden via
-     the `hidden` attribute until a track loads. --mobile-status-offset/
-     -size are defined on .wheel-page inside the mobile media query
-     below (one named source of truth shared with .wheel-grid's own
-     bottom padding, which needs to clear this bar's actual height).
-     The fallbacks here just keep this rule meaningful in isolation. */
+     the `hidden` attribute until a track loads. --mobile-status-offset
+     is defined on .wheel-page inside the mobile media query below
+     (one named source of truth shared with the list's own bottom
+     spacer). No min-height here deliberately -- this bar's rendered
+     height is the thing JS measures (ResizeObserver) into
+     --mini-player-h for the list's spacer/mask to follow, so it must
+     be free to size itself from its own content/padding alone (a
+     longer title wrapping, a user's larger text-size setting) rather
+     than being floored at a fixed value that could drift out of sync
+     with what's actually measured. */
   .mini-player {
     display: none;
     position: fixed;
@@ -3232,7 +3262,6 @@ function folderYearLabel(folder: SerializedFolder) {
     z-index: 90;
     align-items: center;
     gap: 12px;
-    min-height: var(--mobile-mini-player-height, 64px);
     padding: 10px 14px;
     background: var(--static);
     border: 1px solid var(--line);
@@ -3529,18 +3558,23 @@ function folderYearLabel(folder: SerializedFolder) {
          more than intended. */
       padding: 16px 0;
       /* Single named source of truth for "how much space at the
-         bottom needs to stay clear of the mini player" -- derived
-         from its own height/offset rather than a second hardcoded
-         number kept in sync by hand. .wheel-grid's own bottom padding
-         uses this directly; a future reserved now-playing line above
-         the mini player extends this same property instead of
-         needing its own. Height (64px) matches the mini player's own
-         rendered size: 44px buttons + 2*10px vertical padding. */
-      --mobile-mini-player-height: 64px;
+         bottom needs to stay clear of the mini player." --mini-player-h
+         is measured live off the bar's own rendered height (JS,
+         ResizeObserver -- ic-play-mini/ic-pause-mini icon swaps,
+         longer titles, a user's larger text-size setting can all
+         change it) and defaults to 0 here, before JS runs or while
+         nothing's playing -- --mobile-list-bottom-reserve then
+         collapses to just the baseline gap/safe-area/row-breathing-room
+         below, which is the "fall back to normal bottom spacing"
+         case. Both the list's own spacer (.wheel-grid::after) and its
+         bottom fade mask read this same property, so neither can
+         drift out of sync with the other or with the bar's actual
+         size. */
+      --mini-player-h: 0px;
       --mobile-status-offset: 16px;
-      --mobile-reserved-bottom: calc(
-        var(--mobile-status-offset) + var(--mobile-mini-player-height) +
-          env(safe-area-inset-bottom) + 16px
+      --mobile-list-bottom-reserve: calc(
+        var(--mini-player-h, 0px) + var(--mobile-status-offset, 16px) +
+          env(safe-area-inset-bottom) + 10px
       );
     }
     .top-row {
@@ -3559,28 +3593,45 @@ function folderYearLabel(folder: SerializedFolder) {
       overscroll-behavior: contain;
       -webkit-overflow-scrolling: touch;
       transition: opacity 0.15s ease;
-      padding-bottom: var(--mobile-reserved-bottom, 96px);
+      /* NOT padding-bottom here -- Safari can ignore bottom padding
+         on a scrolling flex container, silently clipping the last
+         row behind the mini player. The ::after spacer below is a
+         real flex item instead, so its height always contributes to
+         scrollHeight regardless. */
       /* Feather masks only show once there's actually somewhere to
          scroll to/from -- not at rest. --top-fade/--bottom-fade
          default to 0 (no fade) and are only pushed out to 56px by the
          .show-*-fade classes, toggled by a scroll listener
-         (updateScrollMasks()) rather than restyling rows. */
+         (updateScrollMasks()) rather than restyling rows. The bottom
+         stop is additionally offset by --mobile-list-bottom-reserve,
+         so the fade-to-transparent band sits just above the reserved
+         spacer/mini player -- not at the very bottom of this
+         (scroll-container-height-tall) box, which would fade rows in
+         behind the bar instead of before reaching it. */
       --top-fade: 0px;
       --bottom-fade: 0px;
       mask-image: linear-gradient(
         to bottom,
         transparent,
         black var(--top-fade),
-        black calc(100% - var(--bottom-fade)),
-        transparent
+        black calc(100% - var(--mobile-list-bottom-reserve, 0px) - var(--bottom-fade)),
+        transparent calc(100% - var(--mobile-list-bottom-reserve, 0px))
       );
       -webkit-mask-image: linear-gradient(
         to bottom,
         transparent,
         black var(--top-fade),
-        black calc(100% - var(--bottom-fade)),
-        transparent
+        black calc(100% - var(--mobile-list-bottom-reserve, 0px) - var(--bottom-fade)),
+        transparent calc(100% - var(--mobile-list-bottom-reserve, 0px))
       );
+    }
+    /* Real spacer, not padding -- see the note on .wheel-grid above.
+       A flex item like any row, so it always adds to scrollHeight. */
+    .wheel-grid::after {
+      content: "";
+      display: block;
+      flex: none;
+      height: var(--mobile-list-bottom-reserve, 26px);
     }
     .wheel-grid.show-top-fade {
       --top-fade: 56px;
