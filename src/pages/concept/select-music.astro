@@ -1,0 +1,2355 @@
+---
+import Layout from "../../layouts/Layout.astro"
+import { getCollection } from "astro:content"
+
+const albums = (await getCollection("albums")).sort((a, b) => {
+  const aReleaseDate = a.data.releaseDate?.valueOf() ?? 0
+  const bReleaseDate = b.data.releaseDate?.valueOf() ?? 0
+  return bReleaseDate - aReleaseDate
+})
+
+const allTracks = await getCollection(
+  "tracks",
+  ({ data }) => data.display && !!data.audioUrl,
+)
+
+const tracksByAlbum = new Map<string, typeof allTracks>()
+for (const track of allTracks) {
+  const albumId = track.data.album.id
+  const list = tracksByAlbum.get(albumId) ?? []
+  list.push(track)
+  tracksByAlbum.set(albumId, list)
+}
+
+// Sample-only BPM/genre data for this concept page -- no such fields
+// exist on the real tracks schema (see src/content.config.ts). Keyed
+// by the track's slug (last segment of its content-collection id).
+// Tracks not listed here render an explicit empty state.
+const SAMPLE_TRACK_META: Record<string, { bpm: number; genres: string[] }> = {
+  "boom-original-mix": { bpm: 128, genres: ["Progressive House", "Electro"] },
+  "chrome-lights-original-mix-2": { bpm: 132, genres: ["Techno"] },
+  "just-for-kicks-original-mix": { bpm: 124, genres: ["House", "Funk"] },
+  "birth-of-a-hero-final-mix": { bpm: 140, genres: ["Trance", "Uplifting"] },
+  deadmau6: { bpm: 126, genres: ["Progressive House"] },
+  "ghost-n-stuff-remix": { bpm: 128, genres: ["Electro House", "Dubstep"] },
+  "the-light": { bpm: 130, genres: ["Trance"] },
+}
+
+// Duplicated from src/pages/albums/index.astro -- worth extracting to
+// a shared util if/when this concept merges into production.
+function parseDuration(duration?: string) {
+  if (!duration) return 0
+  const [minutes, seconds] = duration.split(":").map(Number)
+  if (Number.isNaN(minutes) || Number.isNaN(seconds)) return 0
+  return minutes * 60 + seconds
+}
+function formatTotal(totalSeconds: number) {
+  const totalMinutes = Math.round(totalSeconds / 60)
+  if (totalMinutes <= 0) return null
+  if (totalMinutes < 60) return `${totalMinutes} min`
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes > 0 ? `${hours} hr ${minutes} min` : `${hours} hr`
+}
+
+type SerializedTrack = {
+  kind: "track"
+  id: string
+  title: string
+  album?: string
+  albumId?: string
+  audioUrl: string
+  trackNumber?: number
+  duration?: string | null
+  bpm?: number | null
+  genres: string[]
+  parentFolderId: string
+}
+type SerializedFolder = {
+  kind: "folder"
+  id: string
+  title: string
+  year: string | null
+  trackCount: number
+  totalDuration: string | null
+  trackIds: string[]
+}
+type SerializedItem = SerializedFolder | SerializedTrack
+
+const itemsById: Record<string, SerializedItem> = {}
+const topLevelFolderIds: string[] = []
+
+for (const album of albums) {
+  const albumTracks = (tracksByAlbum.get(album.id) ?? []).sort(
+    (a, b) => a.data.trackNumber - b.data.trackNumber,
+  )
+  if (albumTracks.length === 0) continue // don't render empty folders
+
+  const folderId = `album-${album.id}`
+  const trackIds: string[] = []
+  let totalSeconds = 0
+
+  for (const track of albumTracks) {
+    const slug = track.id.split("/").pop() ?? track.id
+    const meta = SAMPLE_TRACK_META[slug]
+    const trackItemId = `track-${slug}`
+    trackIds.push(trackItemId)
+    totalSeconds += parseDuration(track.data.duration)
+    itemsById[trackItemId] = {
+      kind: "track",
+      id: trackItemId,
+      title: track.data.displayTitle ?? track.data.title,
+      album: album.data.title,
+      albumId: album.id,
+      audioUrl: track.data.audioUrl!,
+      trackNumber: track.data.trackNumber,
+      duration: track.data.duration ?? null,
+      bpm: meta?.bpm ?? null,
+      genres: meta?.genres ?? [],
+      parentFolderId: folderId,
+    }
+  }
+
+  itemsById[folderId] = {
+    kind: "folder",
+    id: folderId,
+    title: album.data.title,
+    year: album.data.releaseDate
+      ? album.data.releaseDate.toLocaleDateString("en-US", {
+          timeZone: "UTC",
+          year: "numeric",
+        })
+      : null,
+    trackCount: albumTracks.length,
+    totalDuration: formatTotal(totalSeconds),
+    trackIds,
+  }
+  topLevelFolderIds.push(folderId)
+}
+
+// Tracks whose album reference doesn't resolve to a fetched album --
+// the real schema requires `album` on every track (reference("albums"),
+// not optional), so with today's data this is always empty. Built
+// defensively/correctly regardless, per "Singles only if it has tracks."
+const singlesTracks = allTracks
+  .filter((t) => !albums.some((a) => a.id === t.data.album.id))
+  .sort((a, b) => a.data.trackNumber - b.data.trackNumber)
+
+if (singlesTracks.length > 0) {
+  const folderId = "singles"
+  const trackIds: string[] = []
+  let totalSeconds = 0
+  for (const track of singlesTracks) {
+    const slug = track.id.split("/").pop() ?? track.id
+    const meta = SAMPLE_TRACK_META[slug]
+    const trackItemId = `track-${slug}`
+    trackIds.push(trackItemId)
+    totalSeconds += parseDuration(track.data.duration)
+    itemsById[trackItemId] = {
+      kind: "track",
+      id: trackItemId,
+      title: track.data.displayTitle ?? track.data.title,
+      album: "Singles",
+      audioUrl: track.data.audioUrl!,
+      trackNumber: track.data.trackNumber,
+      duration: track.data.duration ?? null,
+      bpm: meta?.bpm ?? null,
+      genres: meta?.genres ?? [],
+      parentFolderId: folderId,
+    }
+  }
+  itemsById[folderId] = {
+    kind: "folder",
+    id: folderId,
+    title: "Singles",
+    year: null,
+    trackCount: singlesTracks.length,
+    totalDuration: formatTotal(totalSeconds),
+    trackIds,
+  }
+  topLevelFolderIds.push(folderId)
+}
+
+function pluralTracks(n: number) {
+  return `${n} track${n === 1 ? "" : "s"}`
+}
+function folderYearLabel(folder: SerializedFolder) {
+  return folder.year && folder.year !== folder.title ? folder.year : ""
+}
+---
+
+<Layout>
+  <div class="wheel-page">
+    <div class="top-row">
+      <a class="back" href="/"> ← Back to site </a>
+      <button class="sfx-toggle" id="sfx-toggle" type="button">
+        SFX: <span id="sfx-toggle-state">On</span>
+      </button>
+    </div>
+
+    <div class="wheel-grid">
+      <div class="left-col">
+        <div class="hero" id="hero">
+          <div class="hero-albums-view" id="hero-albums-view">
+            <div class="hero-top">
+              <h2 class="hero-title" id="albums-hero-title">—</h2>
+              <button
+                class="hero-play"
+                id="albums-hero-play-btn"
+                type="button"
+                aria-label="Play album"
+              >
+                <span
+                  class="ic-hero-icon ic-play-mini"
+                  id="albums-hero-play-icon"
+                ></span>
+              </button>
+            </div>
+            <div class="hero-meta">
+              <span id="albums-hero-year"></span>
+              <span id="albums-hero-count"></span>
+              <span id="albums-hero-duration"></span>
+            </div>
+          </div>
+
+          <div class="hero-album-view" id="hero-album-view" hidden>
+            <div class="hero-top">
+              <h2 class="hero-title" id="track-hero-title">—</h2>
+              <button
+                class="hero-play"
+                id="track-hero-play-btn"
+                type="button"
+                aria-label="Play"
+              >
+                <span
+                  class="ic-hero-icon ic-play-mini"
+                  id="track-hero-play-icon"
+                ></span>
+              </button>
+            </div>
+            <div class="hero-meta">
+              <span>Track <b id="track-hero-number">—</b></span>
+              <span id="track-hero-duration">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats" id="stats" hidden>
+          <p class="stats-label">Stats</p>
+          <div class="bpm-row">
+            <span class="bpm-value" id="stats-bpm">—</span>
+            <span class="bpm-label">BPM</span>
+          </div>
+          <div class="genres" id="stats-genres">
+            <span class="genre-empty">No genre data</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="wheel-area" id="wheel-area">
+        <!--
+          Fixed header for the wheel column, not a wheel item -- stays
+          in place while only its content crossfades between the two
+          views. Both pieces of content live in the DOM at once
+          (stacked in one grid cell below) so the fade can overlap;
+          `hidden` still gets toggled in sync so the back button drops
+          out of the tab order whenever it isn't the active one.
+        -->
+        <div class="wheel-plate" id="wheel-plate">
+          <div
+            class="wheel-plate-content wheel-plate-albums is-active"
+            id="wheel-plate-albums"
+          >
+            Select album
+          </div>
+          <div
+            class="wheel-plate-content wheel-plate-album"
+            id="wheel-plate-album"
+            hidden
+          >
+            <button class="wheel-plate-back" id="wheel-plate-back" type="button">
+              <span class="ic-collapse"></span>
+              Albums
+            </button>
+            <span class="wheel-plate-divider" aria-hidden="true">/</span>
+            <span class="wheel-plate-info" id="wheel-plate-info"></span>
+          </div>
+        </div>
+
+        <ol
+          class="wheel"
+          id="wheel"
+          role="listbox"
+          aria-label="Albums"
+          tabindex="0"
+        >
+          {
+            topLevelFolderIds.map((folderId, i) => {
+              const folder = itemsById[folderId] as SerializedFolder
+              return (
+                <li
+                  class="wheel-row is-folder"
+                  id={`wheel-item-${folder.id}`}
+                  role="option"
+                  aria-selected={i === 0 ? "true" : "false"}
+                  aria-setsize={topLevelFolderIds.length}
+                  aria-posinset={i + 1}
+                  data-id={folder.id}
+                >
+                  <span class="row-icon">
+                    <svg
+                      class="ic-album-cursor"
+                      viewBox="0 0 24 24"
+                      width="24"
+                      height="24"
+                      aria-hidden="true"
+                    >
+                      <circle cx="12" cy="12" r="8" fill="var(--void)" />
+                      <circle
+                        cx="12"
+                        cy="12"
+                        r="5"
+                        fill="none"
+                        stroke="var(--ash-dim)"
+                        stroke-width="1"
+                      />
+                      <circle
+                        class="ic-album-cursor-ring"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        fill="none"
+                        stroke-width="2"
+                        stroke-dasharray="53 10"
+                        transform="rotate(-90 12 12)"
+                      />
+                    </svg>
+                  </span>
+                  <span class="row-text">
+                    <span class="row-title-row">
+                      <span class="row-title">{folder.title}</span>
+                      <span class="row-playing-dot" hidden />
+                    </span>
+                    <span class="row-album">{folderYearLabel(folder)}</span>
+                  </span>
+                  <span class="row-duration">
+                    {pluralTracks(folder.trackCount)}
+                  </span>
+                </li>
+              )
+            })
+          }
+        </ol>
+      </div>
+    </div>
+
+    <!--
+      Row/chip templates for JS-side cloning. A clone of a server-
+      rendered <template>'s content keeps Astro's scoped-style
+      attribute, unlike a node built with document.createElement --
+      which is why the scoped CSS below actually applies to anything
+      created after the initial page load.
+    -->
+    <template id="track-row-template">
+      <li class="wheel-row" role="option" aria-selected="false">
+        <span class="row-icon">
+          <span class="ic-track-icon ic-play-mini"></span>
+        </span>
+        <span class="row-text">
+          <span class="row-title"></span>
+          <span class="row-album"></span>
+        </span>
+        <span class="row-duration"></span>
+      </li>
+    </template>
+    <template id="folder-row-template">
+      <li class="wheel-row is-folder" role="option" aria-selected="false">
+        <span class="row-icon">
+          <svg
+            class="ic-album-cursor"
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="8" fill="var(--void)"></circle>
+            <circle
+              cx="12"
+              cy="12"
+              r="5"
+              fill="none"
+              stroke="var(--ash-dim)"
+              stroke-width="1"
+            ></circle>
+            <circle
+              class="ic-album-cursor-ring"
+              cx="12"
+              cy="12"
+              r="10"
+              fill="none"
+              stroke-width="2"
+              stroke-dasharray="53 10"
+              transform="rotate(-90 12 12)"
+            ></circle>
+          </svg>
+        </span>
+        <span class="row-text">
+          <span class="row-title-row">
+            <span class="row-title"></span>
+            <span class="row-playing-dot" hidden></span>
+          </span>
+          <span class="row-album"></span>
+        </span>
+        <span class="row-duration"></span>
+      </li>
+    </template>
+    <template id="genre-chip-template">
+      <span class="genre-chip"></span>
+    </template>
+    <template id="genre-empty-template">
+      <span class="genre-empty">No genre data</span>
+    </template>
+
+    <div class="mobile-status-wrap">
+      <span class="mobile-status-label" id="mobile-status-label" hidden></span>
+      <button
+        class="mobile-status"
+        id="mobile-status-btn"
+        type="button"
+        aria-label="Play"
+      >
+        <span class="mobile-status-visual">
+          <span class="ic-status ic-play-mini" id="mobile-status-icon"></span>
+        </span>
+      </button>
+    </div>
+
+    <div class="sr-only" aria-live="polite" id="wheel-announcer"></div>
+  </div>
+
+  <script
+    type="application/json"
+    id="wheel-data"
+    set:html={JSON.stringify({ topLevelFolderIds, itemsById })}
+  />
+</Layout>
+
+<script>
+  function initWheel() {
+    const page = document.querySelector(".wheel-page") as HTMLElement | null
+    const wheelEl = document.getElementById("wheel")
+    const dataEl = document.getElementById("wheel-data")
+    if (!page || !wheelEl || !dataEl || page.dataset.initialized === "true")
+      return
+    page.dataset.initialized = "true"
+
+    type TrackItem = {
+      kind: "track"
+      id: string
+      title: string
+      album?: string
+      albumId?: string
+      audioUrl: string
+      trackNumber?: number
+      duration?: string | null
+      bpm?: number | null
+      genres: string[]
+      parentFolderId: string
+    }
+    type FolderItem = {
+      kind: "folder"
+      id: string
+      title: string
+      year: string | null
+      trackCount: number
+      totalDuration: string | null
+      trackIds: string[]
+    }
+    type WheelItem = TrackItem | FolderItem
+    type QueueTrack = {
+      title: string
+      album?: string
+      albumId?: string
+      audioUrl: string
+    }
+    type VisibleEntry = { item: WheelItem; posinset: number; setsize: number }
+
+    let topLevelFolderIds: string[] = []
+    let itemsById: Record<string, WheelItem> = {}
+    try {
+      const parsed = JSON.parse(dataEl.textContent ?? "{}")
+      topLevelFolderIds = parsed.topLevelFolderIds ?? []
+      itemsById = parsed.itemsById ?? {}
+    } catch {
+      topLevelFolderIds = []
+      itemsById = {}
+    }
+
+    if (topLevelFolderIds.length === 0) return
+
+    const heroAlbumsView = document.getElementById("hero-albums-view")
+    const heroAlbumView = document.getElementById("hero-album-view")
+    const albumsHeroTitle = document.getElementById("albums-hero-title")
+    const albumsHeroYear = document.getElementById("albums-hero-year")
+    const albumsHeroCount = document.getElementById("albums-hero-count")
+    const albumsHeroDuration = document.getElementById("albums-hero-duration")
+    const albumsHeroPlayBtn = document.getElementById(
+      "albums-hero-play-btn",
+    ) as HTMLButtonElement | null
+    const albumsHeroPlayIcon = document.getElementById("albums-hero-play-icon")
+    const trackHeroTitle = document.getElementById("track-hero-title")
+    const trackHeroNumber = document.getElementById("track-hero-number")
+    const trackHeroDuration = document.getElementById("track-hero-duration")
+    const trackHeroPlayBtn = document.getElementById(
+      "track-hero-play-btn",
+    ) as HTMLButtonElement | null
+    const trackHeroPlayIcon = document.getElementById("track-hero-play-icon")
+    const wheelPlate = document.getElementById("wheel-plate")
+    const wheelPlateAlbums = document.getElementById("wheel-plate-albums")
+    const wheelPlateAlbum = document.getElementById("wheel-plate-album")
+    const wheelPlateBack = document.getElementById(
+      "wheel-plate-back",
+    ) as HTMLButtonElement | null
+    const wheelPlateInfo = document.getElementById("wheel-plate-info")
+    const statsEl = document.getElementById("stats")
+    const statsBpm = document.getElementById("stats-bpm")
+    const statsGenres = document.getElementById("stats-genres")
+    const mobileStatusBtn = document.getElementById(
+      "mobile-status-btn",
+    ) as HTMLButtonElement | null
+    const mobileStatusIcon = document.getElementById("mobile-status-icon")
+    const mobileStatusLabel = document.getElementById("mobile-status-label")
+    const announcer = document.getElementById("wheel-announcer")
+    const sfxToggleBtn = document.getElementById(
+      "sfx-toggle",
+    ) as HTMLButtonElement | null
+    const sfxToggleState = document.getElementById("sfx-toggle-state")
+
+    const trackRowTemplate = document.getElementById(
+      "track-row-template",
+    ) as HTMLTemplateElement | null
+    const folderRowTemplate = document.getElementById(
+      "folder-row-template",
+    ) as HTMLTemplateElement | null
+    const genreChipTemplate = document.getElementById(
+      "genre-chip-template",
+    ) as HTMLTemplateElement | null
+    const genreEmptyTemplate = document.getElementById(
+      "genre-empty-template",
+    ) as HTMLTemplateElement | null
+
+    // ---------- constants ----------
+    const ROW_HEIGHT = 64
+    const EDGE_PADDING = 32
+    const DESKTOP_ROW_WIDTH_RATIO = 0.62
+    const DESKTOP_RADIUS_RATIO = 1.4
+    const MOBILE_ROW_EDGE_PADDING = 16
+    const MOBILE_CENTER_PROTRUSION_RATIO = 0.06
+    const MOBILE_CENTER_PROTRUSION_MAX = 24
+    const MOBILE_RADIUS_RATIO = 3.2
+    const SCALE_FALLOFF = 0.08
+    const SCALE_FLOOR = 0.72
+    const OPACITY_FALLOFF = 0.22
+    const OPACITY_FLOOR = 0.15
+    const RENDER_WINDOW = 10
+    const EASE_DECAY_RATE = 16 // per second, framerate-independent
+    const SNAP_EPSILON = 0.001
+    const WHEEL_STEP_THRESHOLD = 70
+    const WHEEL_LOCK_SILENCE_MS = 150
+    const WHEEL_DECAY_TOLERANCE = 0.85
+    const MOBILE_BREAKPOINT = "(max-width: 780px)"
+    const SWEEP_OFFSET = 14 // rows, beyond RENDER_WINDOW -- fully off-screen
+    const SWEEP_LEG_MS = 200
+    const MOBILE_FADE_MS = 150
+    const PLATE_CROSSFADE_MS = 200 // matches SWEEP_LEG_MS -- one crossfade leg
+
+    // ---------- state ----------
+    let view: "albums" | "album" = "albums"
+    let selectedAlbumId: string | null = topLevelFolderIds[0] ?? null
+    let selectedTrackId: string | null = null
+    let visibleEntries: VisibleEntry[] = []
+    let rowEls: HTMLLIElement[] = []
+    let selectedIndex = 0
+    let wheelPosition = 0
+    let targetIndex = 0
+    let animating = false
+    let lastFrameTime = 0
+    let activeAudioUrl: string | null = null
+    let activePlaying = false
+
+    // transition state (desktop sweep + mobile crossfade both use this
+    // as the "is something in flight" guard). "pre-swap" = old content
+    // still showing, easing/fading out; "post-swap" = new content
+    // showing, easing/fading in.
+    let transitionPhase: "idle" | "pre-swap" | "post-swap" = "idle"
+    let transitionDirection: 1 | -1 = 1
+    let sweepRafId: number | null = null
+    let mobileFadeTimeoutId: number | null = null
+    // Separate from the row-transition timers above: the plate never
+    // stops showing something (unlike the rows, it doesn't sweep off
+    // and back), it only crossfades its content, so it gets its own
+    // small pair of cancellable handles.
+    let plateFadeRafId: number | null = null
+    let plateFadeTimeoutId: number | null = null
+
+    const mobileQuery = window.matchMedia(MOBILE_BREAKPOINT)
+    const reducedMotionQuery = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    )
+
+    function isMobileMode() {
+      return mobileQuery.matches
+    }
+    function prefersReducedMotion() {
+      return reducedMotionQuery.matches
+    }
+    function isFormField(target: EventTarget | null) {
+      const el = target as HTMLElement | null
+      const tag = el?.tagName
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        tag === "BUTTON" ||
+        el?.isContentEditable
+      )
+    }
+    function pluralTracks(n: number) {
+      return `${n} track${n === 1 ? "" : "s"}`
+    }
+    function folderYearLabel(folder: FolderItem) {
+      return folder.year && folder.year !== folder.title ? folder.year : ""
+    }
+    function getFolder(id: string | null): FolderItem | undefined {
+      const item = id ? itemsById[id] : undefined
+      return item?.kind === "folder" ? item : undefined
+    }
+
+    // ---------- current-level item list ----------
+    function currentLevelEntries(): VisibleEntry[] {
+      if (view === "albums") {
+        return topLevelFolderIds.map((id, i) => ({
+          item: itemsById[id],
+          posinset: i + 1,
+          setsize: topLevelFolderIds.length,
+        }))
+      }
+      const album = getFolder(selectedAlbumId)
+      if (!album) return []
+      return album.trackIds.map((id, i) => ({
+        item: itemsById[id],
+        posinset: i + 1,
+        setsize: album.trackCount,
+      }))
+    }
+
+    function currentViewLabel(): string {
+      if (view === "albums") return "Albums"
+      const album = getFolder(selectedAlbumId)
+      return album ? `${album.title}, ${pluralTracks(album.trackCount)}` : "Album"
+    }
+
+    // ---------- wheel geometry (shared by desktop + mobile) ----------
+    let currentRadius = 900
+    let currentCenterProtrusion = 96
+
+    function recomputeGeometry() {
+      const containerWidth = wheelEl!.clientWidth || 600
+      let rowWidth: number
+      if (isMobileMode()) {
+        currentCenterProtrusion = Math.min(
+          MOBILE_CENTER_PROTRUSION_MAX,
+          containerWidth * MOBILE_CENTER_PROTRUSION_RATIO,
+        )
+        rowWidth = Math.max(
+          200,
+          containerWidth - currentCenterProtrusion - MOBILE_ROW_EDGE_PADDING * 2,
+        )
+        currentRadius = containerWidth * MOBILE_RADIUS_RATIO
+      } else {
+        rowWidth = Math.max(280, containerWidth * DESKTOP_ROW_WIDTH_RATIO)
+        currentCenterProtrusion = Math.max(
+          0,
+          containerWidth - rowWidth - EDGE_PADDING,
+        )
+        currentRadius = containerWidth * DESKTOP_RADIUS_RATIO
+      }
+      rowEls.forEach((row) => {
+        row.style.width = `${rowWidth}px`
+      })
+
+      // The plate's left edge tracks the row shape language's own
+      // anchor point: the center slot's rendered left edge on desktop
+      // (translateX(currentCenterProtrusion), where the selected row
+      // sits at d=0), or the centered row's left edge on mobile (rows
+      // are margin:auto within the container there).
+      if (wheelPlate) {
+        const plateOffset = isMobileMode()
+          ? (containerWidth - rowWidth) / 2
+          : currentCenterProtrusion
+        wheelPlate.style.marginLeft = `${Math.max(0, plateOffset)}px`
+      }
+    }
+
+    function computeRowTransform(d: number) {
+      const y = d * ROW_HEIGHT
+      const protrusion = Math.sqrt(
+        Math.max(currentRadius * currentRadius - y * y, 0),
+      )
+      const x = Math.max(0, protrusion - currentRadius + currentCenterProtrusion)
+      const absD = Math.abs(d)
+      const scale = Math.max(1 - absD * SCALE_FALLOFF, SCALE_FLOOR)
+      const opacity = Math.max(1 - absD * OPACITY_FALLOFF, OPACITY_FLOOR)
+      return { x, scale, opacity }
+    }
+
+    function applyDesktopFrame() {
+      for (let i = 0; i < rowEls.length; i++) {
+        const row = rowEls[i]
+        const d = i - wheelPosition
+        if (Math.abs(d) > RENDER_WINDOW) {
+          row.style.opacity = "0"
+          row.style.pointerEvents = "none"
+          continue
+        }
+        const { x, scale, opacity } = computeRowTransform(d)
+        const y = d * ROW_HEIGHT
+        row.style.transform = `translate(${x}px, ${y}px) scale(${scale})`
+        row.style.opacity = String(opacity)
+        row.style.pointerEvents = "auto"
+        row.style.zIndex = String(1000 - Math.round(Math.abs(d)))
+      }
+    }
+
+    function applyMobileFrame() {
+      const containerRect = wheelEl!.getBoundingClientRect()
+      const centerY = containerRect.top + containerRect.height / 2
+      for (const row of rowEls) {
+        const rect = row.getBoundingClientRect()
+        const rowCenterY = rect.top + rect.height / 2
+        const d = (rowCenterY - centerY) / ROW_HEIGHT
+        if (Math.abs(d) > RENDER_WINDOW) {
+          row.style.opacity = "0"
+          continue
+        }
+        const { x, scale, opacity } = computeRowTransform(d)
+        row.style.transform = `translateX(${x}px) scale(${scale})`
+        row.style.opacity = String(opacity)
+      }
+    }
+
+    // ---------- desktop animation loop (time-based easing, in-place nav only) ----------
+    function tickAnimation(now: number) {
+      const dt = Math.min((now - lastFrameTime) / 1000, 0.1)
+      lastFrameTime = now
+      const t = prefersReducedMotion()
+        ? 1
+        : 1 - Math.exp(-EASE_DECAY_RATE * dt)
+      wheelPosition += (targetIndex - wheelPosition) * t
+      if (Math.abs(targetIndex - wheelPosition) < SNAP_EPSILON) {
+        wheelPosition = targetIndex
+        applyDesktopFrame()
+        animating = false
+        return
+      }
+      applyDesktopFrame()
+      requestAnimationFrame(tickAnimation)
+    }
+
+    function startDesktopAnimation() {
+      if (animating) return
+      animating = true
+      lastFrameTime = performance.now()
+      requestAnimationFrame(tickAnimation)
+    }
+
+    // ---------- fixed-duration sweep (level transitions only) ----------
+    function cancelSweep() {
+      if (sweepRafId !== null) {
+        cancelAnimationFrame(sweepRafId)
+        sweepRafId = null
+      }
+    }
+
+    function animateSweep(
+      from: number,
+      to: number,
+      durationMs: number,
+      onDone: () => void,
+    ) {
+      cancelSweep()
+      const start = performance.now()
+      function frame(now: number) {
+        const t = Math.min((now - start) / durationMs, 1)
+        const eased = 1 - Math.pow(1 - t, 3)
+        wheelPosition = from + (to - from) * eased
+        applyDesktopFrame()
+        if (t < 1) {
+          sweepRafId = requestAnimationFrame(frame)
+        } else {
+          sweepRafId = null
+          onDone()
+        }
+      }
+      sweepRafId = requestAnimationFrame(frame)
+    }
+
+    // ---------- mobile scroll-driven frame loop (in-place nav only) ----------
+    let mobileRafRunning = false
+    let lastMobileScrollTime = 0
+
+    function mobileFrame() {
+      applyMobileFrame()
+      if (performance.now() - lastMobileScrollTime < 200) {
+        requestAnimationFrame(mobileFrame)
+      } else {
+        mobileRafRunning = false
+      }
+    }
+
+    function kickMobileFrameLoop() {
+      lastMobileScrollTime = performance.now()
+      if (!mobileRafRunning) {
+        mobileRafRunning = true
+        requestAnimationFrame(mobileFrame)
+      }
+    }
+
+    wheelEl.addEventListener(
+      "scroll",
+      () => {
+        if (!isMobileMode()) return
+        kickMobileFrameLoop()
+      },
+      { passive: true },
+    )
+
+    // ---------- mobile: detect centered row via IntersectionObserver ----------
+    const centerObserver = new IntersectionObserver(
+      (entries) => {
+        if (!isMobileMode() || transitionPhase !== "idle") return
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          const id = (entry.target as HTMLElement).dataset.id
+          const index = visibleEntries.findIndex((e) => e.item.id === id)
+          if (index !== -1) selectIndex(index)
+        }
+      },
+      { root: wheelEl, rootMargin: "-49% 0px -49% 0px", threshold: 0 },
+    )
+
+    function syncVisualPosition() {
+      if (isMobileMode()) {
+        rowEls[selectedIndex]?.scrollIntoView({
+          block: "center",
+          behavior: prefersReducedMotion() ? "auto" : "smooth",
+        })
+      } else {
+        startDesktopAnimation()
+      }
+    }
+
+    // ---------- Web Audio ----------
+    let audioCtx: AudioContext | null = null
+
+    function ensureAudioContext(): AudioContext | null {
+      const AC = window.AudioContext
+      if (!AC) return null
+      if (!audioCtx) audioCtx = new AC()
+      return audioCtx
+    }
+
+    function resumeAudioContext() {
+      ensureAudioContext()?.resume().catch(() => {})
+    }
+    document.addEventListener("click", resumeAudioContext, { once: true })
+    document.addEventListener("keydown", resumeAudioContext, { once: true })
+
+    function isSfxMuted(): boolean {
+      try {
+        return localStorage.getItem("concept-sfx-muted") === "true"
+      } catch {
+        return false
+      }
+    }
+    function setSfxMuted(muted: boolean) {
+      try {
+        localStorage.setItem("concept-sfx-muted", String(muted))
+      } catch {
+        // private mode / storage disabled -- ignore, just won't persist
+      }
+    }
+
+    function playTick() {
+      if (isSfxMuted()) return
+      const ctx = audioCtx
+      if (!ctx || ctx.state !== "running") return // e.g. first-ever gesture was a scroll; no-op gracefully
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = "triangle"
+      osc.frequency.setValueAtTime(700, now)
+      osc.frequency.exponentialRampToValueAtTime(1000, now + 0.015)
+      gain.gain.setValueAtTime(0.0001, now)
+      gain.gain.exponentialRampToValueAtTime(0.16, now + 0.002)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now)
+      osc.stop(now + 0.09)
+    }
+
+    function playLevelSound(kind: "open" | "close") {
+      if (isSfxMuted()) return
+      const ctx = audioCtx
+      if (!ctx || ctx.state !== "running") return
+      const now = ctx.currentTime
+      const freqs = kind === "open" ? [600, 900] : [900, 600]
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = "triangle"
+        const t0 = now + i * 0.045
+        osc.frequency.setValueAtTime(freq, t0)
+        gain.gain.setValueAtTime(0.0001, t0)
+        gain.gain.exponentialRampToValueAtTime(0.14, t0 + 0.004)
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.07)
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.start(t0)
+        osc.stop(t0 + 0.08)
+      })
+    }
+
+    function updateSfxToggleLabel() {
+      if (sfxToggleState) sfxToggleState.textContent = isSfxMuted() ? "Off" : "On"
+    }
+    updateSfxToggleLabel()
+    sfxToggleBtn?.addEventListener("click", () => {
+      setSfxMuted(!isSfxMuted())
+      updateSfxToggleLabel()
+    })
+
+    // ---------- playback ----------
+    function currentItem(): WheelItem | undefined {
+      return visibleEntries[selectedIndex]?.item
+    }
+
+    function getSelectedPlaybackState(): "idle" | "playing" | "paused" {
+      const item = currentItem()
+      if (!item || item.kind !== "track" || item.audioUrl !== activeAudioUrl)
+        return "idle"
+      return activePlaying ? "playing" : "paused"
+    }
+
+    function buildFolderQueue(folder: FolderItem): QueueTrack[] {
+      return folder.trackIds.map((id) => {
+        const t = itemsById[id] as TrackItem
+        return {
+          title: t.title,
+          album: t.album,
+          albumId: t.albumId,
+          audioUrl: t.audioUrl,
+        }
+      })
+    }
+
+    function playTrack(track: TrackItem) {
+      if (track.audioUrl === activeAudioUrl) {
+        document.dispatchEvent(new CustomEvent("player:toggle"))
+        return
+      }
+      const folder = itemsById[track.parentFolderId] as FolderItem | undefined
+      if (!folder) return
+      const queue = buildFolderQueue(folder)
+      const index = folder.trackIds.indexOf(track.id)
+      document.dispatchEvent(
+        new CustomEvent("player:play", {
+          detail: { queue, index: Math.max(0, index) },
+        }),
+      )
+    }
+
+    function playAlbum(folder: FolderItem, startIndex = 0) {
+      const queue = buildFolderQueue(folder)
+      document.dispatchEvent(
+        new CustomEvent("player:play", { detail: { queue, index: startIndex } }),
+      )
+    }
+
+    function playCurrent() {
+      const item = currentItem()
+      if (!item) return
+      if (item.kind === "track") {
+        playTrack(item)
+      } else if (view === "albums") {
+        playAlbum(item, 0)
+      }
+    }
+
+    albumsHeroPlayBtn?.addEventListener("click", () => {
+      const folder = getFolder(selectedAlbumId)
+      if (view === "albums" && folder) playAlbum(folder, 0)
+    })
+    trackHeroPlayBtn?.addEventListener("click", playCurrent)
+    mobileStatusBtn?.addEventListener("click", playCurrent)
+
+    function refreshPlaybackUI() {
+      // Track rows (album view): icon reflects the actually-loaded/
+      // playing state for that exact audioUrl.
+      rowEls.forEach((row) => {
+        const icon = row.querySelector<HTMLSpanElement>(".ic-track-icon")
+        const isActiveAudio =
+          !!activeAudioUrl && row.dataset.audioUrl === activeAudioUrl
+        row.classList.toggle("is-active-audio", isActiveAudio)
+        if (icon) {
+          icon.className =
+            "ic-track-icon " +
+            (isActiveAudio && activePlaying ? "ic-pause-mini" : "ic-play-mini")
+        }
+      })
+
+      // Album rows (albums view): a quiet indicator on whichever album
+      // contains the actively PLAYING (not merely loaded/paused) track.
+      if (view === "albums") {
+        const playingTrack =
+          activePlaying && activeAudioUrl
+            ? (Object.values(itemsById).find(
+                (i) => i.kind === "track" && i.audioUrl === activeAudioUrl,
+              ) as TrackItem | undefined)
+            : undefined
+        rowEls.forEach((row) => {
+          const dot = row.querySelector<HTMLElement>(".row-playing-dot")
+          if (!dot) return
+          dot.hidden = !(playingTrack && row.dataset.id === playingTrack.parentFolderId)
+        })
+      }
+
+      const state = getSelectedPlaybackState()
+      const isPlaying = state === "playing"
+      const item = currentItem()
+
+      if (item?.kind === "folder" && view === "albums") {
+        const folderPlaying =
+          activePlaying &&
+          !!activeAudioUrl &&
+          item.trackIds.some(
+            (id) => (itemsById[id] as TrackItem).audioUrl === activeAudioUrl,
+          )
+        if (albumsHeroPlayIcon)
+          albumsHeroPlayIcon.className =
+            "ic-hero-icon " + (folderPlaying ? "ic-pause-mini" : "ic-play-mini")
+        albumsHeroPlayBtn?.setAttribute(
+          "aria-label",
+          folderPlaying ? "Pause album" : "Play album",
+        )
+      }
+
+      if (trackHeroPlayIcon)
+        trackHeroPlayIcon.className =
+          "ic-hero-icon " + (isPlaying ? "ic-pause-mini" : "ic-play-mini")
+      trackHeroPlayBtn?.setAttribute("aria-label", isPlaying ? "Pause" : "Play")
+
+      if (mobileStatusBtn && mobileStatusIcon) {
+        mobileStatusBtn.classList.remove("is-idle", "is-playing", "is-paused")
+        mobileStatusBtn.classList.add(`is-${state}`)
+        mobileStatusIcon.className =
+          "ic-status " + (isPlaying ? "ic-pause-mini" : "ic-play-mini")
+        mobileStatusBtn.setAttribute("aria-label", isPlaying ? "Pause" : "Play")
+      }
+
+      if (mobileStatusLabel) {
+        const differs =
+          !!activeAudioUrl &&
+          (!item || item.kind !== "track" || item.audioUrl !== activeAudioUrl)
+        const activeTrack = differs
+          ? (Object.values(itemsById).find(
+              (i) => i.kind === "track" && i.audioUrl === activeAudioUrl,
+            ) as TrackItem | undefined)
+          : undefined
+        if (activeTrack) {
+          mobileStatusLabel.textContent = activeTrack.title
+          mobileStatusLabel.hidden = false
+        } else {
+          mobileStatusLabel.textContent = ""
+          mobileStatusLabel.hidden = true
+        }
+      }
+    }
+
+    document.addEventListener("player:state", ((event: CustomEvent) => {
+      const detail = event.detail ?? {}
+      activeAudioUrl = detail.audioUrl ?? null
+      activePlaying = !!detail.playing
+      refreshPlaybackUI()
+    }) as EventListener)
+
+    // ---------- hero / stats ----------
+    function renderGenres(track: TrackItem) {
+      if (!statsGenres) return
+      statsGenres.innerHTML = ""
+      if (track.genres && track.genres.length > 0) {
+        track.genres.forEach((genre, i) => {
+          const source = genreChipTemplate?.content.firstElementChild
+          if (!source) return
+          const chip = source.cloneNode(true) as HTMLSpanElement
+          if (i === 0) chip.classList.add("is-primary")
+          chip.textContent = genre
+          statsGenres.appendChild(chip)
+        })
+      } else {
+        const source = genreEmptyTemplate?.content.firstElementChild
+        if (source) statsGenres.appendChild(source.cloneNode(true))
+      }
+    }
+
+    function updateHero() {
+      if (heroAlbumsView) heroAlbumsView.hidden = view !== "albums"
+      if (heroAlbumView) heroAlbumView.hidden = view !== "album"
+      if (statsEl) statsEl.hidden = view !== "album"
+
+      if (view === "albums") {
+        const folder = getFolder(selectedAlbumId)
+        if (!folder) return
+        if (albumsHeroTitle) albumsHeroTitle.textContent = folder.title
+        if (albumsHeroYear) {
+          // Hidden (not just emptied) when there's no year -- an
+          // empty-but-present flex item still claims a gap before the
+          // next one, which read as the meta row being indented.
+          const yearLabel = folderYearLabel(folder)
+          albumsHeroYear.textContent = yearLabel
+          albumsHeroYear.hidden = !yearLabel
+        }
+        if (albumsHeroCount) albumsHeroCount.textContent = pluralTracks(folder.trackCount)
+        if (albumsHeroDuration)
+          albumsHeroDuration.textContent = folder.totalDuration ?? "—"
+      } else {
+        const track = selectedTrackId
+          ? (itemsById[selectedTrackId] as TrackItem | undefined)
+          : undefined
+        if (track) {
+          if (trackHeroTitle) trackHeroTitle.textContent = track.title
+          if (trackHeroNumber)
+            trackHeroNumber.textContent = track.trackNumber
+              ? String(track.trackNumber)
+              : "—"
+          if (trackHeroDuration) trackHeroDuration.textContent = track.duration ?? "—"
+          if (statsBpm) {
+            const hasBpm = track.bpm != null
+            statsBpm.textContent = hasBpm ? String(track.bpm) : "—"
+            statsBpm.classList.toggle("is-empty", !hasBpm)
+          }
+          renderGenres(track)
+        }
+      }
+
+      refreshPlaybackUI()
+    }
+
+    function updatePlateAlbumInfo(folder: FolderItem) {
+      if (!wheelPlateInfo) return
+      wheelPlateInfo.textContent = [
+        folder.title,
+        folderYearLabel(folder),
+        pluralTracks(folder.trackCount),
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    }
+
+    function cancelPlateFade() {
+      if (plateFadeRafId !== null) {
+        cancelAnimationFrame(plateFadeRafId)
+        plateFadeRafId = null
+      }
+      if (plateFadeTimeoutId !== null) {
+        window.clearTimeout(plateFadeTimeoutId)
+        plateFadeTimeoutId = null
+      }
+    }
+
+    // The plate itself never moves; only its content crossfades
+    // between the "Select album" label and the back-button/album-info
+    // group, at the same swap moment the rows' own content changes.
+    // Both pieces stay in the DOM at once (stacked in one grid cell in
+    // CSS) so they can overlap during the fade -- cancelPlateFade()
+    // guards against a reversal calling this again before the previous
+    // call's own timers have fired, which would otherwise hide
+    // whichever content this call just made active.
+    function setPlateView(target: "albums" | "album") {
+      const incoming = target === "album" ? wheelPlateAlbum : wheelPlateAlbums
+      const outgoing = target === "album" ? wheelPlateAlbums : wheelPlateAlbum
+      if (!incoming || !outgoing) return
+
+      cancelPlateFade()
+
+      if (prefersReducedMotion()) {
+        outgoing.classList.remove("is-active")
+        outgoing.hidden = true
+        incoming.hidden = false
+        incoming.classList.add("is-active")
+        return
+      }
+
+      incoming.hidden = false
+      // One frame between unhiding and starting the opacity transition
+      // -- same coalescing risk as the row/hero fades elsewhere on
+      // this page (toggling `hidden` and an opacity-transition class
+      // in one synchronous tick risks the browser skipping the fade).
+      plateFadeRafId = requestAnimationFrame(() => {
+        plateFadeRafId = null
+        incoming.classList.add("is-active")
+        outgoing.classList.remove("is-active")
+        plateFadeTimeoutId = window.setTimeout(() => {
+          plateFadeTimeoutId = null
+          outgoing.hidden = true
+        }, PLATE_CROSSFADE_MS)
+      })
+    }
+
+    function updateAriaSelected() {
+      const entry = visibleEntries[selectedIndex]
+      wheelEl!.setAttribute(
+        "aria-activedescendant",
+        entry ? `wheel-item-${entry.item.id}` : "",
+      )
+      rowEls.forEach((row, i) => {
+        const isSelected = i === selectedIndex
+        row.setAttribute("aria-selected", isSelected ? "true" : "false")
+        row.classList.toggle("is-selected", isSelected)
+      })
+    }
+
+    function announceSelection() {
+      const entry = visibleEntries[selectedIndex]
+      if (!entry || !announcer) return
+      announcer.textContent = `${entry.item.title}, ${
+        view === "albums" ? "album" : "track"
+      } ${entry.posinset} of ${entry.setsize}`
+    }
+
+    function announceLevelChange() {
+      if (!announcer) return
+      announcer.textContent = currentViewLabel()
+    }
+
+    // ---------- row DOM ----------
+    function createRowElement(entry: VisibleEntry): HTMLLIElement | null {
+      const { item, posinset, setsize } = entry
+      const template = item.kind === "folder" ? folderRowTemplate : trackRowTemplate
+      const source = template?.content.firstElementChild
+      if (!source) return null
+      const li = source.cloneNode(true) as HTMLLIElement
+
+      li.id = `wheel-item-${item.id}`
+      li.setAttribute("aria-setsize", String(setsize))
+      li.setAttribute("aria-posinset", String(posinset))
+      li.dataset.id = item.id
+
+      const titleEl = li.querySelector<HTMLSpanElement>(".row-title")
+      const subEl = li.querySelector<HTMLSpanElement>(".row-album")
+      const durEl = li.querySelector<HTMLSpanElement>(".row-duration")
+
+      if (item.kind === "folder") {
+        if (titleEl) titleEl.textContent = item.title
+        if (subEl) subEl.textContent = folderYearLabel(item)
+        if (durEl) durEl.textContent = pluralTracks(item.trackCount)
+      } else {
+        li.dataset.audioUrl = item.audioUrl
+        if (titleEl) titleEl.textContent = item.title
+        if (subEl) subEl.textContent = item.album ?? ""
+        if (durEl) durEl.textContent = item.duration ?? ""
+      }
+
+      return li
+    }
+
+    function attachRowListeners() {
+      rowEls.forEach((row, i) => {
+        row.addEventListener("click", () => {
+          if (transitionPhase !== "idle") return
+          const entry = visibleEntries[i]
+          if (!entry) return
+          if (entry.item.kind === "folder") {
+            beginEnterAlbum(entry.item.id)
+          } else {
+            selectIndex(i, { playNow: true })
+          }
+        })
+      })
+    }
+
+    // ---------- rebuild: rebuilds the DOM/visible list for the current view ----------
+    function rebuildForCurrentView() {
+      const built = currentLevelEntries()
+        .map((entry) => ({ entry, row: createRowElement(entry) }))
+        .filter(
+          (b): b is { entry: VisibleEntry; row: HTMLLIElement } =>
+            b.row !== null,
+        )
+      visibleEntries = built.map((b) => b.entry)
+      rowEls = built.map((b) => b.row)
+
+      wheelEl!.innerHTML = ""
+      rowEls.forEach((row) => wheelEl!.appendChild(row))
+
+      const targetId = view === "albums" ? selectedAlbumId : selectedTrackId
+      const newIndex = visibleEntries.findIndex((e) => e.item.id === targetId)
+      selectedIndex = newIndex !== -1 ? newIndex : 0
+      if (view === "albums") {
+        selectedAlbumId = visibleEntries[selectedIndex]?.item.id ?? null
+      } else {
+        selectedTrackId = visibleEntries[selectedIndex]?.item.id ?? null
+      }
+
+      wheelPosition = selectedIndex
+      targetIndex = selectedIndex
+
+      recomputeGeometry()
+      if (isMobileMode()) {
+        rowEls[selectedIndex]?.scrollIntoView({ block: "center", behavior: "auto" })
+        applyMobileFrame()
+      } else {
+        applyDesktopFrame()
+      }
+
+      wheelEl!.setAttribute("aria-label", currentViewLabel())
+      updateHero()
+      updateAriaSelected()
+
+      centerObserver.disconnect()
+      rowEls.forEach((row) => centerObserver.observe(row))
+
+      attachRowListeners()
+    }
+
+    // ---------- URL / history ----------
+    function updateUrlForAlbum(
+      albumId: string | null,
+      opts: { replace?: boolean } = {},
+    ) {
+      const url = new URL(location.href)
+      if (albumId) url.searchParams.set("album", albumId)
+      else url.searchParams.delete("album")
+      const state = { albumId, pushedByApp: true }
+      if (opts.replace) history.replaceState(state, "", url)
+      else history.pushState(state, "", url)
+    }
+
+    // ---------- level transitions ----------
+    // transitionPhase tracks "have we swapped the DOM yet" for the
+    // CURRENT transition, independent of platform: "pre-swap" (old
+    // content still showing, easing/fading out) or "post-swap" (new
+    // content showing, easing/fading in). transitionDirection tracks
+    // which way: entering an album (+1) or going back (-1). Desktop
+    // drives this with animateSweep()/sweepRafId; mobile with a plain
+    // opacity crossfade on a timer (mobileFadeTimeoutId). Both are
+    // cancelled together so reversing mid-transition can never leave
+    // a stale timer/rAF to fire later and collide with whatever
+    // starts next.
+    function cancelActiveTransition() {
+      cancelSweep()
+      if (mobileFadeTimeoutId !== null) {
+        window.clearTimeout(mobileFadeTimeoutId)
+        mobileFadeTimeoutId = null
+      }
+    }
+
+    function runLevelTransition(direction: 1 | -1, doSwap: () => void) {
+      cancelActiveTransition()
+      transitionDirection = direction
+
+      if (prefersReducedMotion()) {
+        doSwap()
+        transitionPhase = "idle"
+        return
+      }
+
+      if (isMobileMode()) {
+        transitionPhase = "pre-swap"
+        wheelEl!.style.opacity = "0"
+        mobileFadeTimeoutId = window.setTimeout(() => {
+          mobileFadeTimeoutId = null
+          doSwap()
+          transitionPhase = "post-swap"
+          mobileFadeTimeoutId = window.setTimeout(() => {
+            mobileFadeTimeoutId = null
+            wheelEl!.style.opacity = "1"
+            transitionPhase = "idle"
+          }, 20)
+        }, MOBILE_FADE_MS)
+        return
+      }
+
+      transitionPhase = "pre-swap"
+      const startPos = wheelPosition
+      animateSweep(startPos, startPos + direction * SWEEP_OFFSET, SWEEP_LEG_MS, () => {
+        doSwap()
+        const finalIndex = selectedIndex
+        wheelPosition = finalIndex + direction * SWEEP_OFFSET
+        applyDesktopFrame()
+        transitionPhase = "post-swap"
+        animateSweep(wheelPosition, finalIndex, SWEEP_LEG_MS, () => {
+          wheelPosition = finalIndex
+          targetIndex = finalIndex
+          transitionPhase = "idle"
+        })
+      })
+    }
+
+    function beginEnterAlbum(
+      albumId: string,
+      opts: { fromHistory?: boolean } = {},
+    ) {
+      const folder = getFolder(albumId)
+      if (!folder) return
+
+      // Entering an album that already contains the playing track
+      // selects that track, not always the first one.
+      const activeInThisAlbum = activeAudioUrl
+        ? folder.trackIds
+            .map((id) => itemsById[id] as TrackItem)
+            .find((t) => t.audioUrl === activeAudioUrl)
+        : undefined
+      selectedTrackId = activeInThisAlbum?.id ?? folder.trackIds[0] ?? null
+      selectedAlbumId = albumId
+
+      playLevelSound("open")
+      announceLevelChange()
+
+      runLevelTransition(1, () => {
+        view = "album"
+        if (!opts.fromHistory) updateUrlForAlbum(albumId)
+        rebuildForCurrentView()
+        updatePlateAlbumInfo(folder)
+        setPlateView("album")
+      })
+    }
+
+    function beginExitAlbum(opts: { fromHistory?: boolean } = {}) {
+      playLevelSound("close")
+      announceLevelChange()
+
+      runLevelTransition(-1, () => {
+        view = "albums"
+        if (!opts.fromHistory) updateUrlForAlbum(null)
+        rebuildForCurrentView()
+        setPlateView("albums")
+      })
+    }
+
+    function performBackNavigation() {
+      if ((history.state as { pushedByApp?: boolean } | null)?.pushedByApp) {
+        // popstate handler runs the actual exit transition
+        history.back()
+      } else {
+        // Directly-loaded/refreshed ?album= URL -- nothing of ours
+        // behind it in the stack, so history.back() would leave the
+        // site. Replace this entry instead and transition ourselves
+        // (replaceState doesn't fire popstate).
+        updateUrlForAlbum(null, { replace: true })
+        beginExitAlbum({ fromHistory: true })
+      }
+    }
+
+    function requestBack() {
+      // During an enter transition's pre-swap leg, `view` is still
+      // "albums" -- it only flips to "album" inside doSwap(), which
+      // runs later. Allow back to interrupt that leg too, not just
+      // once view has already flipped, otherwise the exact moment
+      // reversal needs to work is when this guard would block it.
+      const midEnterTransition = transitionPhase !== "idle" && transitionDirection === 1
+      if (view !== "album" && !midEnterTransition) return
+
+      if (transitionPhase === "idle") {
+        performBackNavigation()
+        return
+      }
+
+      if (transitionDirection !== 1) {
+        // Already exiting -- already doing what was asked; ignore a
+        // redundant back press rather than restarting/overlapping it.
+        return
+      }
+
+      // Mid an ENTER transition -- reverse cleanly from here, on
+      // whichever platform's mechanism is actually running.
+      cancelActiveTransition()
+
+      if (transitionPhase === "pre-swap") {
+        // DOM not yet swapped -- nothing was ever entered, so there's
+        // nothing to undo beyond the in-flight visual.
+        if (isMobileMode()) {
+          wheelEl!.style.opacity = "1"
+          transitionPhase = "idle"
+        } else {
+          const restIndex = selectedIndex
+          transitionDirection = -1
+          transitionPhase = "post-swap"
+          animateSweep(wheelPosition, restIndex, SWEEP_LEG_MS, () => {
+            wheelPosition = restIndex
+            targetIndex = restIndex
+            transitionPhase = "idle"
+          })
+        }
+        return
+      }
+
+      // post-swap: DOM already swapped to the album's tracks --
+      // redirect straight into the real exit, continuing from here.
+      if (isMobileMode()) wheelEl!.style.opacity = "1"
+      transitionPhase = "idle"
+      performBackNavigation()
+    }
+
+    wheelPlateBack?.addEventListener("click", requestBack)
+
+    window.addEventListener("popstate", () => {
+      const params = new URLSearchParams(location.search)
+      const albumId = params.get("album")
+      if (albumId && getFolder(albumId)) {
+        if (view !== "album" || selectedAlbumId !== albumId) {
+          beginEnterAlbum(albumId, { fromHistory: true })
+        }
+      } else if (view !== "albums") {
+        beginExitAlbum({ fromHistory: true })
+      }
+    })
+
+    // ---------- central selection entry point (in-place nav only, no level change) ----------
+    function selectIndex(index: number, opts: { playNow?: boolean } = {}) {
+      const clamped = Math.max(0, Math.min(visibleEntries.length - 1, index))
+      const entry = visibleEntries[clamped]
+      if (!entry) return
+      const changed = clamped !== selectedIndex
+      selectedIndex = clamped
+      if (view === "albums") selectedAlbumId = entry.item.id
+      else selectedTrackId = entry.item.id
+      targetIndex = clamped
+
+      syncVisualPosition()
+      updateHero()
+      updateAriaSelected()
+
+      if (changed) {
+        playTick()
+        announceSelection()
+      }
+      if (opts.playNow) playCurrent()
+    }
+
+    // ---------- input: keyboard ----------
+    document.addEventListener("keydown", (event) => {
+      if (isFormField(event.target)) return
+
+      if (event.key === "Escape" || event.key === "ArrowLeft") {
+        // Going back is always allowed, including mid-transition --
+        // it's how a transition gets reversed. Deliberately no
+        // view === "album" gate here: requestBack() already contains
+        // the correct combined check (including the exit-leg-of-enter
+        // window where `view` hasn't flipped to "album" yet) and
+        // safely no-ops on its own when there's nothing to go back to.
+        event.preventDefault()
+        requestBack()
+        return
+      }
+
+      if (transitionPhase !== "idle") return // ignore other nav input mid-transition
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault()
+        selectIndex(selectedIndex - 1)
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault()
+        selectIndex(selectedIndex + 1)
+      } else if (event.key === "ArrowRight") {
+        const item = currentItem()
+        if (view === "albums" && item?.kind === "folder") {
+          event.preventDefault()
+          beginEnterAlbum(item.id)
+        }
+      } else if (event.key === "Enter") {
+        event.preventDefault()
+        const item = currentItem()
+        if (view === "albums" && item?.kind === "folder") {
+          beginEnterAlbum(item.id)
+        } else {
+          playCurrent()
+        }
+      }
+    })
+
+    // ---------- input: wheel/trackpad ----------
+    // One step per gesture. After a step fires we lock further steps
+    // until either (a) no wheel events arrive for ~150ms, or (b) a new
+    // event's magnitude isn't smaller than the previous one -- which
+    // covers both a genuinely new, bigger flick AND a run of same-
+    // strength deliberate mouse-wheel notches (neither of those decays
+    // the way an inertia tail smoothly does), so both unlock
+    // immediately instead of waiting out the whole tail.
+    let wheelAccumulator = 0
+    let wheelLocked = false
+    let wheelLastAbsDelta = 0
+    let wheelSilenceTimer: number | undefined
+
+    function normalizeWheelDeltaY(e: WheelEvent) {
+      if (e.deltaMode === 1) return e.deltaY * 16 // DOM_DELTA_LINE (Firefox)
+      if (e.deltaMode === 2) return e.deltaY * 800 // DOM_DELTA_PAGE (rare)
+      return e.deltaY
+    }
+
+    wheelEl.addEventListener(
+      "wheel",
+      (event) => {
+        // Mobile relies entirely on native scroll + scroll-snap; never
+        // engage the desktop wheel-math there (and never block native
+        // scrolling on a hybrid touch/trackpad device).
+        if (isMobileMode()) return
+        event.preventDefault()
+        if (transitionPhase !== "idle") return
+
+        window.clearTimeout(wheelSilenceTimer)
+        wheelSilenceTimer = window.setTimeout(() => {
+          wheelLocked = false
+          wheelAccumulator = 0
+          wheelLastAbsDelta = 0
+        }, WHEEL_LOCK_SILENCE_MS)
+
+        const delta = normalizeWheelDeltaY(event)
+        const absDelta = Math.abs(delta)
+
+        if (wheelLocked) {
+          const isDecaying = absDelta < wheelLastAbsDelta * WHEEL_DECAY_TOLERANCE
+          wheelLastAbsDelta = absDelta
+          if (isDecaying) return
+          wheelLocked = false
+          wheelAccumulator = 0
+        }
+
+        wheelAccumulator += delta
+        wheelLastAbsDelta = absDelta
+
+        if (Math.abs(wheelAccumulator) >= WHEEL_STEP_THRESHOLD) {
+          const step = wheelAccumulator > 0 ? 1 : -1
+          selectIndex(selectedIndex + step)
+          wheelLocked = true
+          wheelAccumulator = 0
+        }
+      },
+      { passive: false },
+    )
+
+    // ---------- keep selection in sync across the mobile/desktop breakpoint ----------
+    mobileQuery.addEventListener("change", () => {
+      rowEls.forEach((row) => {
+        row.style.transform = ""
+        row.style.opacity = ""
+        row.style.zIndex = ""
+        row.style.pointerEvents = ""
+      })
+      recomputeGeometry()
+      if (isMobileMode()) {
+        requestAnimationFrame(() => {
+          rowEls[selectedIndex]?.scrollIntoView({ block: "center", behavior: "auto" })
+          applyMobileFrame()
+        })
+      } else {
+        wheelPosition = selectedIndex
+        targetIndex = selectedIndex
+        applyDesktopFrame()
+      }
+    })
+
+    // ---------- keep geometry correct as the panel is resized ----------
+    let resizeRafId: number | null = null
+    window.addEventListener("resize", () => {
+      if (resizeRafId !== null) return
+      resizeRafId = requestAnimationFrame(() => {
+        resizeRafId = null
+        recomputeGeometry()
+        if (isMobileMode()) applyMobileFrame()
+        else applyDesktopFrame()
+      })
+    })
+
+    // ---------- initial paint ----------
+    const initialParams = new URLSearchParams(location.search)
+    const initialAlbumId = initialParams.get("album")
+    if (initialAlbumId && getFolder(initialAlbumId)) {
+      view = "album"
+      selectedAlbumId = initialAlbumId
+      const folder = getFolder(initialAlbumId)!
+      selectedTrackId = folder.trackIds[0] ?? null
+      // Mark this entry as "not ours to history.back() out of" -- if
+      // the user landed here directly (deep link / refresh), there's
+      // nothing of ours behind it in the stack.
+      history.replaceState({ albumId: initialAlbumId, pushedByApp: false }, "", location.href)
+    }
+    rebuildForCurrentView()
+
+    // If something from this catalog is already playing (e.g.
+    // persisted across a navigation from another page) and we're on
+    // the plain albums view, refresh the playing-indicator dot --
+    // deep-linked album loads already resolve their own selection above.
+    document.addEventListener(
+      "player:state",
+      ((event: CustomEvent) => {
+        activeAudioUrl = event.detail?.audioUrl ?? null
+        activePlaying = !!event.detail?.playing
+        refreshPlaybackUI()
+      }) as EventListener,
+      { once: true },
+    )
+    document.dispatchEvent(new CustomEvent("player:query"))
+  }
+
+  document.addEventListener("astro:page-load", initWheel)
+</script>
+
+<style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* Page-scoped: an author display:* rule always beats the UA
+     [hidden]{display:none} rule at equal specificity, so any element
+     on this page that both sets its own `display` AND gets toggled
+     via the hidden attribute would silently ignore it without this.
+     !important makes that impossible to reintroduce by accident. */
+  [hidden] {
+    display: none !important;
+  }
+
+  .wheel-page {
+    position: relative;
+    height: 100dvh;
+    overflow: hidden;
+    padding: 24px 28px 28px;
+    display: flex;
+    flex-direction: column;
+  }
+  /* This page owns a fixed, non-scrolling viewport (the wheel is the
+     only scroll container) -- neutralize the sitewide reserved
+     PlayerBar padding-bottom (global.css) only while this page is
+     mounted, via :global() rather than editing that shared file. */
+  :global(body) {
+    padding-bottom: 0 !important;
+  }
+  /* Single-point perspective floor grid, tilted back via rotateX with
+     the transform-origin standing in for the vanishing point (roughly
+     behind where the wheel's center sits) -- kept very low-opacity so
+     it never competes with text. */
+  .wheel-page::before {
+    content: "";
+    position: absolute;
+    inset: -60% -20% 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.1;
+    background-image:
+      repeating-linear-gradient(0deg, var(--line) 0 1px, transparent 1px 56px),
+      repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 56px);
+    transform: perspective(700px) rotateX(62deg);
+    transform-origin: 65% 0%;
+    animation: grid-drift 18s linear infinite;
+  }
+  @keyframes grid-drift {
+    from {
+      background-position: 0 0;
+    }
+    to {
+      background-position: 0 56px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wheel-page::before {
+      animation: none;
+    }
+  }
+
+  .top-row {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .back {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--dusk);
+    text-decoration: none;
+    border-bottom: 1px solid var(--dusk);
+    padding-bottom: 2px;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .back:hover {
+    color: var(--flare);
+    border-color: var(--flare);
+  }
+  .sfx-toggle {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--ash);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .sfx-toggle:hover {
+    color: var(--bone);
+    border-color: var(--ash-dim);
+  }
+
+  .wheel-grid {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(260px, 340px) 1fr;
+    grid-template-rows: minmax(0, 1fr);
+    gap: 24px;
+    align-items: stretch;
+  }
+
+  .left-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .hero {
+    background: var(--static);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px 20px;
+  }
+  .ic-collapse {
+    width: 7px;
+    height: 7px;
+    display: block;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+  .hero-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .hero-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.3rem, 2.6vw, 1.7rem);
+    line-height: 1.15;
+    color: var(--bone);
+  }
+  .hero-play {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--dusk);
+    background: var(--dusk);
+    color: var(--void);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s,
+      transform 0.08s;
+  }
+  .hero-play:hover {
+    background: var(--flare);
+    border-color: var(--flare);
+  }
+  .hero-play:active {
+    transform: scale(0.94);
+  }
+  .hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 10px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ash);
+  }
+  .hero-meta b {
+    color: var(--bone);
+    font-weight: 600;
+  }
+
+  .stats {
+    background: var(--static);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px 20px;
+  }
+  .stats-label {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ash-dim);
+  }
+  .bpm-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .bpm-value {
+    font-family: var(--font-mono);
+    font-size: 2.2rem;
+    font-weight: 500;
+    color: var(--bone);
+    font-variant-numeric: tabular-nums;
+  }
+  .bpm-value.is-empty {
+    font-size: 0.95rem;
+    font-weight: 400;
+    color: var(--ash-dim);
+  }
+  .bpm-label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ash-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .genres {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .genre-chip {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ash);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 10px;
+  }
+  .genre-chip.is-primary {
+    color: var(--bone);
+    border-color: var(--ash-dim);
+    font-weight: 600;
+  }
+  .genre-empty {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--ash-dim);
+    font-style: italic;
+  }
+
+  .wheel-area {
+    position: relative;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Fixed header for the wheel column, sized to its content (not the
+     row's full width) -- reuses the row's own shape language (left
+     radius, angled right end, surface/border tokens) at a smaller
+     size. Sits in normal flow above the wheel rather than being
+     absolutely positioned/overlaid, so the wheel's own box starts
+     below it and never needs to track it. */
+  .wheel-plate {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    align-self: flex-start;
+    display: grid;
+    margin: 0 0 14px;
+    padding: 8px 18px;
+    background: var(--static);
+    border: 1px solid var(--line);
+    border-radius: 999px 32px 32px 999px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ash);
+  }
+  /* Both pieces of content share one grid cell so they can overlap
+     during the crossfade instead of the plate resizing under them. */
+  .wheel-plate-content {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .wheel-plate-content.is-active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wheel-plate-content {
+      transition: none;
+    }
+  }
+  .wheel-plate-back {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font: inherit;
+    color: var(--ash);
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .wheel-plate-back:hover {
+    color: var(--flare);
+  }
+  .wheel-plate-back:focus-visible {
+    outline: 2px solid var(--dusk);
+    outline-offset: 2px;
+  }
+  .wheel-plate-divider {
+    color: var(--line);
+  }
+
+  .wheel {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: contain;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    outline: none;
+    /* Rows are hard-clipped at the wheel's own edge (overflow:hidden
+       above); this softens that clip right below the plate so a row
+       fades out rather than getting cut off mid-shape as it nears it. */
+    mask-image: linear-gradient(to bottom, transparent, black 32px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 32px);
+  }
+  .wheel:focus,
+  .wheel:focus-visible {
+    outline: none;
+  }
+
+  .wheel-row {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 62%; /* fallback; JS sets the real width from the measured container */
+    margin-top: -28px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 18px;
+    background: var(--static);
+    border: 1px solid var(--line);
+    border-radius: 999px 32px 32px 999px;
+    cursor: pointer;
+    transform-origin: left center;
+  }
+  .wheel-row.is-folder {
+    border-width: 2px;
+    font-weight: 600;
+  }
+  .wheel-row.is-selected {
+    border-color: var(--dusk);
+    box-shadow:
+      0 0 0 1px var(--dusk),
+      0 8px 24px -8px rgb(0 0 0 / 0.6);
+  }
+  /* Keyboard focus indicator lives on the selected row itself (the
+     aria-activedescendant pattern), not on the wheel container -- a
+     soft glow on the existing frame rather than a second ring, since
+     the wheel holds focus for most of the interaction and a full
+     double outline reads as too heavy that often. Only shows for
+     keyboard focus (:focus-visible on the listbox), never after a
+     mouse click. */
+  .wheel:focus-visible .wheel-row.is-selected {
+    box-shadow:
+      0 0 0 1px var(--dusk),
+      0 0 14px 3px color-mix(in srgb, var(--dusk) 55%, transparent),
+      0 8px 24px -8px rgb(0 0 0 / 0.6);
+  }
+  .row-icon {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--void);
+    color: var(--ash);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* Track rows' play/pause glyph uses currentColor and reads well on
+     a coral circular backdrop when selected. Album rows' cursor-ring
+     SVG below has its own dedicated selected treatment (the ring
+     stroke itself turns --dusk), so it's excluded here -- giving the
+     row-icon circle a dusk background behind it too would just add
+     an unintended ring-behind-the-ring. */
+  .wheel-row.is-selected:not(.is-folder) .row-icon {
+    background: var(--dusk);
+    color: var(--void);
+  }
+  /* DDR-style player-cursor ring, replacing the play triangle on
+     album rows (they open a drill-down, they don't play). Outer ring
+     is neutral by default, --dusk once the row is selected; the inner
+     disc/ring are static. */
+  .ic-album-cursor-ring {
+    stroke: var(--ash-dim);
+  }
+  .wheel-row.is-selected .ic-album-cursor-ring {
+    stroke: var(--dusk);
+  }
+  .row-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .row-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .row-title {
+    min-width: 0;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--bone);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .row-playing-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--dusk);
+  }
+  .wheel-row.is-folder .row-title {
+    font-weight: 700;
+  }
+  .wheel-row.is-selected .row-title {
+    color: var(--dusk);
+  }
+  .row-album {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ash-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .row-duration {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ash);
+  }
+
+  .ic-play-mini {
+    width: 0;
+    height: 0;
+    margin-left: 1px;
+    border-style: solid;
+    border-width: 5px 0 5px 8px;
+    border-color: transparent transparent transparent currentColor;
+  }
+  .ic-pause-mini {
+    width: 8px;
+    height: 10px;
+    background-image: linear-gradient(
+      90deg,
+      currentColor 0 35%,
+      transparent 35% 65%,
+      currentColor 65% 100%
+    );
+  }
+  .ic-hero-icon.ic-play-mini {
+    border-width: 6px 0 6px 10px;
+  }
+  .ic-hero-icon.ic-pause-mini {
+    width: 9px;
+    height: 11px;
+  }
+
+  .mobile-status-wrap {
+    display: none;
+    position: fixed;
+    right: calc(16px + env(safe-area-inset-right));
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    z-index: 80;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    max-width: min(60vw, 220px);
+  }
+  .mobile-status-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--ash-dim);
+    background: var(--static);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* The button itself is the full 44x44 tap target (WCAG minimum);
+     the visible circle inside it is deliberately smaller, roughly a
+     row's own play-icon size, so it doesn't read as a large FAB. */
+  .mobile-status {
+    flex: none;
+    align-self: flex-end;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+  .mobile-status-visual {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--static);
+    color: var(--ash);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s,
+      color 0.15s;
+  }
+  .mobile-status.is-playing .mobile-status-visual {
+    background: var(--dusk);
+    border-color: var(--dusk);
+    color: var(--void);
+  }
+  .mobile-status.is-paused .mobile-status-visual {
+    border-color: var(--dusk);
+    color: var(--dusk);
+  }
+
+  @media (max-width: 780px) {
+    .wheel-page {
+      padding: 16px;
+    }
+    .wheel-grid {
+      display: flex;
+      flex-direction: column;
+    }
+    .left-col {
+      flex: none;
+      margin-bottom: 12px;
+    }
+    .hero-albums-view,
+    .hero-album-view {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+    .hero-meta {
+      margin-top: 0;
+    }
+    .hero-top {
+      min-width: 0; /* lets .hero-title actually shrink to truncate below */
+    }
+    .hero-album-view .hero-title {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    #albums-hero-play-btn {
+      display: none;
+    }
+    #track-hero-play-btn {
+      display: none;
+    }
+    .stats {
+      display: none;
+    }
+    .wheel-area {
+      flex: 1;
+      min-height: 0;
+    }
+    .wheel {
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+      overflow-anchor: none;
+      scroll-snap-type: y mandatory;
+      -webkit-overflow-scrolling: touch;
+      transition: opacity 0.15s ease;
+      /* vertical padding percentages resolve against the container's
+         WIDTH per spec, not its height -- use a viewport-height calc
+         instead so the first/last row can actually reach center */
+      padding: calc(50dvh - 70px) 0;
+    }
+    .wheel-row {
+      position: relative;
+      top: auto;
+      left: auto;
+      margin: 10px auto;
+      width: 90%; /* fallback; JS sets the real width from the measured container */
+      scroll-snap-align: center;
+    }
+    .wheel-row.is-selected .row-title {
+      white-space: normal;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+    }
+    .mobile-status-wrap {
+      display: flex;
+    }
+    /* This page provides its own complete mobile transport (row play
+       buttons, status icon); the sitewide mini-bar would duplicate
+       that and doesn't fit the locked-viewport layout here. */
+    :global(#player-bar) {
+      display: none !important;
+    }
+  }
+</style>
