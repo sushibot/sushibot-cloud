@@ -441,7 +441,9 @@ function folderYearLabel(folder: SerializedFolder) {
       </button>
     </template>
 
-    <div class="mobile-status-wrap">
+    <!-- Hidden until a track has actually loaded -- never show a
+         button that does nothing. -->
+    <div class="mobile-status-wrap" id="mobile-status-wrap" hidden>
       <span class="mobile-status-label" id="mobile-status-label" hidden></span>
       <button
         class="mobile-status"
@@ -554,6 +556,7 @@ function folderYearLabel(folder: SerializedFolder) {
     const statsEl = document.getElementById("stats")
     const statsBpm = document.getElementById("stats-bpm")
     const statsGenres = document.getElementById("stats-genres")
+    const mobileStatusWrap = document.getElementById("mobile-status-wrap")
     const mobileStatusBtn = document.getElementById(
       "mobile-status-btn",
     ) as HTMLButtonElement | null
@@ -630,6 +633,10 @@ function folderYearLabel(folder: SerializedFolder) {
     let lastFrameTime = 0
     let activeAudioUrl: string | null = null
     let activePlaying = false
+    // Mobile only: the albums list's own scrollTop, captured right
+    // before drilling into an album so "back" can restore it exactly
+    // rather than centering/scrolling anything.
+    let savedAlbumsScrollTop = 0
 
     // transition state (desktop sweep + mobile crossfade both use this
     // as the "is something in flight" guard). "pre-swap" = old content
@@ -859,60 +866,11 @@ function folderYearLabel(folder: SerializedFolder) {
       sweepRafId = requestAnimationFrame(frame)
     }
 
-    // ---------- mobile: detect centered row via IntersectionObserver ----------
-    // rootMargin shrinks the observer's root to a thin band around
-    // the view's own center ratio (0.5 in albums view, up near
-    // ALBUM_CENTER_Y_RATIO in album view) -- since rootMargin can't be
-    // changed after construction, the observer itself is recreated by
-    // createCenterObserver() whenever the view (and so the ratio)
-    // changes, from rebuildForCurrentView().
-    function centerBandRootMargin(ratio: number) {
-      const halfBand = 1 // percent
-      const topPct = Math.max(0, ratio * 100 - halfBand)
-      const bottomPct = Math.max(0, (1 - ratio) * 100 - halfBand)
-      return `-${topPct}% 0px -${bottomPct}% 0px`
-    }
-    function createCenterObserver() {
-      return new IntersectionObserver(
-        (entries) => {
-          if (!isMobileMode() || transitionPhase !== "idle") return
-          for (const entry of entries) {
-            if (!entry.isIntersecting) continue
-            const id = (entry.target as HTMLElement).dataset.id
-            const index = visibleEntries.findIndex((e) => e.item.id === id)
-            if (index !== -1) selectIndex(index)
-          }
-        },
-        {
-          root: wheelEl,
-          rootMargin: centerBandRootMargin(
-            view === "album" ? ALBUM_CENTER_Y_RATIO : 0.5,
-          ),
-          threshold: 0,
-        },
-      )
-    }
-    let centerObserver = createCenterObserver()
-
-    // Scrolls the selected row to the view's own center ratio -- a
-    // manual scrollTop calculation rather than scrollIntoView(), since
-    // scrollIntoView's `block` option only offers "center" (50%), not
-    // an arbitrary fraction.
-    function scrollSelectedIntoCenterBand(behavior: ScrollBehavior) {
-      const row = rowEls[selectedIndex]
-      if (!row) return
-      const ratio = view === "album" ? ALBUM_CENTER_Y_RATIO : 0.5
-      const targetCenterY = wheelEl!.clientHeight * ratio
-      const rowCenterY = row.offsetTop + row.offsetHeight / 2
-      wheelEl!.scrollTo({ top: rowCenterY - targetCenterY, behavior })
-    }
-
+    // Desktop only: selectIndex() (and so this) is never reached on
+    // mobile anymore -- taps play directly, scrolling no longer
+    // selects anything, and arrow keys are ignored in list mode.
     function syncVisualPosition() {
-      if (isMobileMode()) {
-        scrollSelectedIntoCenterBand(prefersReducedMotion() ? "auto" : "smooth")
-      } else {
-        startDesktopAnimation()
-      }
+      startDesktopAnimation()
     }
 
     // ---------- Web Audio ----------
@@ -1001,7 +959,51 @@ function folderYearLabel(folder: SerializedFolder) {
       return visibleEntries[selectedIndex]?.item
     }
 
+    // Whatever's actually loaded, independent of any cursor -- mobile
+    // has no cursor to compare against, so its highlight/aria-current/
+    // status-icon state all key off this instead of currentItem().
+    function findActiveTrack(): TrackItem | undefined {
+      if (!activeAudioUrl) return undefined
+      return Object.values(itemsById).find(
+        (i) => i.kind === "track" && i.audioUrl === activeAudioUrl,
+      ) as TrackItem | undefined
+    }
+
+    function isFolderPlaying(folder: FolderItem): boolean {
+      return (
+        activePlaying &&
+        !!activeAudioUrl &&
+        folder.trackIds.some(
+          (id) => (itemsById[id] as TrackItem).audioUrl === activeAudioUrl,
+        )
+      )
+    }
+
+    // Index (within the CURRENT view's visibleEntries) of whatever's
+    // playing -- the track itself in album view, or the folder that
+    // contains it in albums view (rows there are folders, not tracks).
+    // Used to re-derive desktop's cursor after a mobile->desktop
+    // crossing, and to know what to scroll into view on mobile
+    // (entering an album, or crossing desktop->mobile).
+    function findActiveEntryIndex(): number {
+      if (!activeAudioUrl) return -1
+      if (view === "albums") {
+        const playingTrack = findActiveTrack()
+        if (!playingTrack) return -1
+        return visibleEntries.findIndex(
+          (e) => e.item.id === playingTrack.parentFolderId,
+        )
+      }
+      return visibleEntries.findIndex(
+        (e) => e.item.kind === "track" && e.item.audioUrl === activeAudioUrl,
+      )
+    }
+
     function getSelectedPlaybackState(): "idle" | "playing" | "paused" {
+      if (isMobileMode()) {
+        if (!activeAudioUrl) return "idle"
+        return activePlaying ? "playing" : "paused"
+      }
       const item = currentItem()
       if (!item || item.kind !== "track" || item.audioUrl !== activeAudioUrl)
         return "idle"
@@ -1053,37 +1055,66 @@ function folderYearLabel(folder: SerializedFolder) {
       }
     }
 
+    // Fires in albums view (desktop and mobile) and, on mobile only,
+    // in album view too -- the folder-summary hero is reused there
+    // (see updateHero()) rather than showing the per-track hero.
+    // Toggles rather than restarts if this album is already playing.
     albumsHeroPlayBtn?.addEventListener("click", () => {
+      const showingFolderHero =
+        view === "albums" || (isMobileMode() && view === "album")
+      if (!showingFolderHero) return
       const folder = getFolder(selectedAlbumId)
-      if (view === "albums" && folder) playAlbum(folder, 0)
+      if (!folder) return
+      if (isFolderPlaying(folder)) {
+        document.dispatchEvent(new CustomEvent("player:toggle"))
+      } else {
+        playAlbum(folder, 0)
+      }
     })
     trackHeroPlayBtn?.addEventListener("click", playCurrent)
-    mobileStatusBtn?.addEventListener("click", playCurrent)
+    // Mobile: toggles whatever's actually loaded -- there's no cursor
+    // to fall back on for "resume" once nothing's loaded, so this is
+    // a no-op then (the button/wrap is hidden in that state anyway).
+    // Desktop keeps the cursor-driven playCurrent().
+    mobileStatusBtn?.addEventListener("click", () => {
+      if (isMobileMode()) {
+        if (activeAudioUrl) document.dispatchEvent(new CustomEvent("player:toggle"))
+        return
+      }
+      playCurrent()
+    })
 
     function refreshPlaybackUI() {
+      const mobile = isMobileMode()
+
       // Track rows (album view): icon reflects the actually-loaded/
-      // playing state for that exact audioUrl.
+      // playing state for that exact audioUrl. On mobile, this exact
+      // same match also drives the row's highlight/aria-current/
+      // accessible name -- there's no cursor there, so "selected"
+      // means "playing," not "focused."
       rowEls.forEach((row) => {
         const icon = row.querySelector<HTMLSpanElement>(".ic-track-icon")
         const isActiveAudio =
           !!activeAudioUrl && row.dataset.audioUrl === activeAudioUrl
+        const isPlayingHere = isActiveAudio && activePlaying
         row.classList.toggle("is-active-audio", isActiveAudio)
         if (icon) {
           icon.className =
-            "ic-track-icon " +
-            (isActiveAudio && activePlaying ? "ic-pause-mini" : "ic-play-mini")
+            "ic-track-icon " + (isPlayingHere ? "ic-pause-mini" : "ic-play-mini")
+        }
+        if (mobile && row.dataset.audioUrl) {
+          row.classList.toggle("is-selected", isActiveAudio)
+          if (isActiveAudio) row.setAttribute("aria-current", "true")
+          else row.removeAttribute("aria-current")
+          const title = row.querySelector<HTMLElement>(".row-title")?.textContent ?? ""
+          row.setAttribute("aria-label", isPlayingHere ? `Pause ${title}` : `Play ${title}`)
         }
       })
 
       // Album rows (albums view): a quiet indicator on whichever album
       // contains the actively PLAYING (not merely loaded/paused) track.
       if (view === "albums") {
-        const playingTrack =
-          activePlaying && activeAudioUrl
-            ? (Object.values(itemsById).find(
-                (i) => i.kind === "track" && i.audioUrl === activeAudioUrl,
-              ) as TrackItem | undefined)
-            : undefined
+        const playingTrack = activePlaying ? findActiveTrack() : undefined
         rowEls.forEach((row) => {
           const dot = row.querySelector<HTMLElement>(".row-playing-dot")
           if (!dot) return
@@ -1093,15 +1124,13 @@ function folderYearLabel(folder: SerializedFolder) {
 
       const state = getSelectedPlaybackState()
       const isPlaying = state === "playing"
-      const item = currentItem()
 
-      if (item?.kind === "folder" && view === "albums") {
-        const folderPlaying =
-          activePlaying &&
-          !!activeAudioUrl &&
-          item.trackIds.some(
-            (id) => (itemsById[id] as TrackItem).audioUrl === activeAudioUrl,
-          )
+      // Folder-summary hero's play button: shown in albums view
+      // always, and in album view on mobile too (see updateHero()).
+      const showingFolderHero = view === "albums" || (mobile && view === "album")
+      if (showingFolderHero) {
+        const folder = getFolder(selectedAlbumId)
+        const folderPlaying = folder ? isFolderPlaying(folder) : false
         if (albumsHeroPlayIcon)
           albumsHeroPlayIcon.className =
             "ic-hero-icon " + (folderPlaying ? "ic-pause-mini" : "ic-play-mini")
@@ -1116,6 +1145,10 @@ function folderYearLabel(folder: SerializedFolder) {
           "ic-hero-icon " + (isPlaying ? "ic-pause-mini" : "ic-play-mini")
       trackHeroPlayBtn?.setAttribute("aria-label", isPlaying ? "Pause" : "Play")
 
+      // Hidden entirely until something has actually loaded -- never
+      // show a button that would do nothing yet.
+      if (mobileStatusWrap) mobileStatusWrap.hidden = !activeAudioUrl
+
       if (mobileStatusBtn && mobileStatusIcon) {
         mobileStatusBtn.classList.remove("is-idle", "is-playing", "is-paused")
         mobileStatusBtn.classList.add(`is-${state}`)
@@ -1125,14 +1158,11 @@ function folderYearLabel(folder: SerializedFolder) {
       }
 
       if (mobileStatusLabel) {
-        const differs =
-          !!activeAudioUrl &&
-          (!item || item.kind !== "track" || item.audioUrl !== activeAudioUrl)
-        const activeTrack = differs
-          ? (Object.values(itemsById).find(
-              (i) => i.kind === "track" && i.audioUrl === activeAudioUrl,
-            ) as TrackItem | undefined)
-          : undefined
+        // Only ever visible on mobile (desktop keeps this element
+        // hidden via its own base CSS) -- always shows whatever's
+        // actually loaded, since there's no cursor left to compare
+        // against and decide whether it'd be "redundant."
+        const activeTrack = findActiveTrack()
         if (activeTrack) {
           mobileStatusLabel.textContent = activeTrack.title
           mobileStatusLabel.hidden = false
@@ -1169,27 +1199,39 @@ function folderYearLabel(folder: SerializedFolder) {
       }
     }
 
+    // The folder-summary hero (title/year/count/duration/"Play album")
+    // is shown in albums view on both platforms, AND reused in album
+    // view on mobile -- selectedAlbumId already points at the right
+    // folder either way (the browsing target, or the open album), so
+    // no separate lookup is needed for the mobile case. Desktop's
+    // per-track hero only ever shows in desktop's own album view.
     function updateHero() {
-      if (heroAlbumsView) heroAlbumsView.hidden = view !== "albums"
-      if (heroAlbumView) heroAlbumView.hidden = view !== "album"
-      if (statsEl) statsEl.hidden = view !== "album"
+      const showFolderHero = view === "albums" || (isMobileMode() && view === "album")
+      const showTrackHero = view === "album" && !isMobileMode()
 
-      if (view === "albums") {
+      if (heroAlbumsView) heroAlbumsView.hidden = !showFolderHero
+      if (heroAlbumView) heroAlbumView.hidden = !showTrackHero
+      if (statsEl) statsEl.hidden = !showTrackHero
+
+      if (showFolderHero) {
         const folder = getFolder(selectedAlbumId)
-        if (!folder) return
-        if (albumsHeroTitle) albumsHeroTitle.textContent = folder.title
-        if (albumsHeroYear) {
-          // Hidden (not just emptied) when there's no year -- an
-          // empty-but-present flex item still claims a gap before the
-          // next one, which read as the meta row being indented.
-          const yearLabel = folderYearLabel(folder)
-          albumsHeroYear.textContent = yearLabel
-          albumsHeroYear.hidden = !yearLabel
+        if (folder) {
+          if (albumsHeroTitle) albumsHeroTitle.textContent = folder.title
+          if (albumsHeroYear) {
+            // Hidden (not just emptied) when there's no year -- an
+            // empty-but-present flex item still claims a gap before
+            // the next one, which read as the meta row being indented.
+            const yearLabel = folderYearLabel(folder)
+            albumsHeroYear.textContent = yearLabel
+            albumsHeroYear.hidden = !yearLabel
+          }
+          if (albumsHeroCount)
+            albumsHeroCount.textContent = pluralTracks(folder.trackCount)
+          if (albumsHeroDuration)
+            albumsHeroDuration.textContent = folder.totalDuration ?? "—"
         }
-        if (albumsHeroCount) albumsHeroCount.textContent = pluralTracks(folder.trackCount)
-        if (albumsHeroDuration)
-          albumsHeroDuration.textContent = folder.totalDuration ?? "—"
-      } else {
+      }
+      if (showTrackHero) {
         const track = selectedTrackId
           ? (itemsById[selectedTrackId] as TrackItem | undefined)
           : undefined
@@ -1332,7 +1374,17 @@ function folderYearLabel(folder: SerializedFolder) {
       })
     }
 
+    // Desktop only: the cursor's aria-activedescendant/aria-selected/
+    // .is-selected. Mobile has no cursor, so its equivalent (aria-current/
+    // .is-selected, driven by what's actually playing) lives in
+    // refreshPlaybackUI() instead, reacting to playback rather than a
+    // selection event -- this just clears the desktop-only attribute
+    // there so it can't linger stale.
     function updateAriaSelected() {
+      if (isMobileMode()) {
+        wheelEl!.removeAttribute("aria-activedescendant")
+        return
+      }
       const entry = visibleEntries[selectedIndex]
       wheelEl!.setAttribute(
         "aria-activedescendant",
@@ -1342,6 +1394,34 @@ function folderYearLabel(folder: SerializedFolder) {
         const isSelected = i === selectedIndex
         row.setAttribute("aria-selected", isSelected ? "true" : "false")
         row.classList.toggle("is-selected", isSelected)
+      })
+    }
+
+    // Sets the wheel/list container's and each row's role for the
+    // current mode, plus the static (non-playback-dependent) half of
+    // mobile's per-row accessible name -- folder rows' "Open {title}"
+    // never changes, so it's set here rather than in
+    // refreshPlaybackUI(), which only ever touches track rows.
+    // Called after any (re)build of rowEls, and again when crossing
+    // the breakpoint re-tags the existing rows in place.
+    function applyModeRoles() {
+      const mobile = isMobileMode()
+      wheelEl!.setAttribute("role", mobile ? "list" : "listbox")
+      rowEls.forEach((row, i) => {
+        const entry = visibleEntries[i]
+        row.setAttribute("role", mobile ? "listitem" : "option")
+        if (mobile) {
+          row.removeAttribute("aria-selected")
+          if (entry?.item.kind === "folder") {
+            row.setAttribute("aria-label", `Open ${entry.item.title}`)
+          }
+          // Track rows' aria-label (Play/Pause + title) and
+          // aria-current are set reactively by refreshPlaybackUI(),
+          // called right after this wherever this function is.
+        } else {
+          row.removeAttribute("aria-current")
+          row.removeAttribute("aria-label")
+        }
       })
     }
 
@@ -1397,6 +1477,10 @@ function folderYearLabel(folder: SerializedFolder) {
           if (!entry) return
           if (entry.item.kind === "folder") {
             beginEnterAlbum(entry.item.id)
+          } else if (isMobileMode()) {
+            // Direct play, no cursor/hero/tick/scroll side effects --
+            // mobile has nothing for selectIndex() to drive.
+            playTrack(entry.item)
           } else {
             selectIndex(i, { playNow: true })
           }
@@ -1430,24 +1514,33 @@ function folderYearLabel(folder: SerializedFolder) {
       wheelPosition = selectedIndex
       targetIndex = selectedIndex
 
-      wheelEl!.classList.toggle("is-album-view", view === "album")
       recomputeGeometry()
       if (isMobileMode()) {
-        scrollSelectedIntoCenterBand("auto")
+        // Entering (or deep-linking into) an album: reveal the
+        // playing track if it's in here, instantly, no centering --
+        // otherwise start at the top. Going back to albums: restore
+        // the exact scroll position saved on the way in, rather than
+        // scrolling to anything.
+        if (view === "album") {
+          const idx = findActiveEntryIndex()
+          if (idx !== -1) {
+            rowEls[idx]?.scrollIntoView({ block: "center", behavior: "auto" })
+          } else {
+            wheelEl!.scrollTop = 0
+          }
+        } else {
+          wheelEl!.scrollTop = savedAlbumsScrollTop
+        }
       } else {
         applyDesktopFrame()
       }
 
       wheelEl!.setAttribute("aria-label", currentViewLabel())
-      updateHero()
+      applyModeRoles()
+      updateHero() // also calls refreshPlaybackUI(), which fills in
+      // the dynamic half (track rows' Play/Pause label, aria-current)
+      // of what applyModeRoles() just set the static half of
       updateAriaSelected()
-
-      // rootMargin can't be edited after construction, so a view
-      // change (different center ratio) means a fresh observer, not
-      // just re-observing the new rows on the old one.
-      centerObserver.disconnect()
-      centerObserver = createCenterObserver()
-      rowEls.forEach((row) => centerObserver.observe(row))
 
       attachRowListeners()
     }
@@ -1606,6 +1699,14 @@ function folderYearLabel(folder: SerializedFolder) {
         : undefined
       selectedTrackId = activeInThisAlbum?.id ?? folder.trackIds[0] ?? null
       selectedAlbumId = albumId
+
+      // Only meaningful coming from a genuine albums-list scroll
+      // position (not a deep-link/popstate landing straight in an
+      // album) -- restored exactly by rebuildForCurrentView() on the
+      // way back out, rather than centering/scrolling anything.
+      if (isMobileMode() && view === "albums") {
+        savedAlbumsScrollTop = wheelEl!.scrollTop
+      }
 
       playLevelSound("open")
       announceLevelChange()
@@ -1782,10 +1883,20 @@ function folderYearLabel(folder: SerializedFolder) {
         // the correct combined check (including the exit-leg-of-enter
         // window where `view` hasn't flipped to "album" yet) and
         // safely no-ops on its own when there's nothing to go back to.
+        // Unaffected by list mode below -- back is a distinct action,
+        // not a cursor movement.
         event.preventDefault()
         requestBack()
         return
       }
+
+      // List mode has no cursor for Up/Down/Right/Enter to move or
+      // act on -- ignore them rather than silently mutating
+      // selectedIndex where nothing on screen reflects it. Also
+      // deliberately not calling preventDefault() here, so a screen
+      // reader's own browse-mode arrow-key handling (over role="list"/
+      // "listitem") still works natively.
+      if (isMobileMode()) return
 
       if (transitionPhase !== "idle") return // ignore other nav input mid-transition
 
@@ -1834,9 +1945,10 @@ function folderYearLabel(folder: SerializedFolder) {
     wheelEl.addEventListener(
       "wheel",
       (event) => {
-        // Mobile relies entirely on native scroll + scroll-snap; never
-        // engage the desktop wheel-math there (and never block native
-        // scrolling on a hybrid touch/trackpad device).
+        // Mobile is a plain freely-scrolling list; scrolling selects
+        // nothing there, so never engage the desktop wheel-math (and
+        // never block native scrolling on a hybrid touch/trackpad
+        // device).
         if (isMobileMode()) return
         event.preventDefault()
         if (transitionPhase !== "idle") return
@@ -1873,13 +1985,14 @@ function folderYearLabel(folder: SerializedFolder) {
     )
 
     // ---------- keep selection in sync across the mobile/desktop breakpoint ----------
-    // Switches between "wheel mode" (desktop, arced/transformed rows)
-    // and "list mode" (mobile, plain document flow) -- clears any
-    // inline transform/opacity/zIndex/pointerEvents a prior wheel-mode
-    // pass may have left on the rows regardless of which way we're
-    // switching (a no-op in list mode, which never sets them);
-    // recomputeGeometry() itself handles clearing/(re)setting width
-    // and the docked header's offset for whichever mode is now active.
+    // Switches between "wheel mode" (desktop, arced/transformed rows,
+    // cursor-driven) and "list mode" (mobile, plain document flow,
+    // playback-driven) -- clears any inline transform/opacity/zIndex/
+    // pointerEvents a prior wheel-mode pass may have left on the rows
+    // regardless of which way we're switching (a no-op in list mode,
+    // which never sets them); recomputeGeometry() itself handles
+    // clearing/(re)setting width and the docked header's offset for
+    // whichever mode is now active.
     mobileQuery.addEventListener("change", () => {
       rowEls.forEach((row) => {
         row.style.transform = ""
@@ -1888,14 +2001,35 @@ function folderYearLabel(folder: SerializedFolder) {
         row.style.pointerEvents = ""
       })
       recomputeGeometry()
+      applyModeRoles()
+
       if (isMobileMode()) {
-        requestAnimationFrame(() => {
-          scrollSelectedIntoCenterBand("auto")
-        })
+        // Desktop -> mobile: no cursor to carry over, just make sure
+        // whatever's actually playing (if part of the current list)
+        // is still visible.
+        const idx = findActiveEntryIndex()
+        if (idx !== -1) {
+          requestAnimationFrame(() => {
+            rowEls[idx]?.scrollIntoView({ block: "center", behavior: "auto" })
+          })
+        }
       } else {
+        // Mobile -> desktop: list mode never maintained a cursor, so
+        // re-derive one from whatever's playing (the track itself in
+        // album view, or the folder containing it in albums view),
+        // falling back to the first item if nothing is.
+        const idx = findActiveEntryIndex()
+        selectedIndex = idx !== -1 ? idx : 0
+        const entry = visibleEntries[selectedIndex]
+        if (entry) {
+          if (view === "albums") selectedAlbumId = entry.item.id
+          else selectedTrackId = entry.item.id
+        }
         wheelPosition = selectedIndex
         targetIndex = selectedIndex
         applyDesktopFrame()
+        updateHero()
+        updateAriaSelected()
       }
     })
 
@@ -2491,7 +2625,15 @@ function folderYearLabel(folder: SerializedFolder) {
     display: none;
     position: fixed;
     right: calc(16px + env(safe-area-inset-right));
-    bottom: calc(16px + env(safe-area-inset-bottom));
+    /* --mobile-status-offset/-size are defined on .wheel-page inside
+       the mobile media query below (one named source of truth, so
+       .wheel's own bottom padding -- and whatever reserves space for
+       a future now-playing line above this -- can share it exactly
+       rather than duplicating the numbers). The fallbacks here just
+       keep this rule meaningful if read in isolation. */
+    bottom: calc(
+      var(--mobile-status-offset, 16px) + env(safe-area-inset-bottom)
+    );
     z-index: 80;
     flex-direction: column;
     align-items: flex-end;
@@ -2516,8 +2658,8 @@ function folderYearLabel(folder: SerializedFolder) {
   .mobile-status {
     flex: none;
     align-self: flex-end;
-    width: 44px;
-    height: 44px;
+    width: var(--mobile-status-size, 44px);
+    height: var(--mobile-status-size, 44px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2554,6 +2696,19 @@ function folderYearLabel(folder: SerializedFolder) {
   @media (max-width: 780px) {
     .wheel-page {
       padding: 16px;
+      /* Single named source of truth for "how much space at the
+         bottom needs to stay clear of the status icon" -- derived
+         from the icon's own size/offset rather than a second
+         hardcoded number kept in sync by hand. .wheel's own bottom
+         padding uses this directly; a future reserved now-playing
+         line above the icon extends this same property instead of
+         needing its own. */
+      --mobile-status-size: 44px;
+      --mobile-status-offset: 16px;
+      --mobile-reserved-bottom: calc(
+        var(--mobile-status-offset) + var(--mobile-status-size) +
+          env(safe-area-inset-bottom) + 16px
+      );
     }
     .wheel-grid {
       display: flex;
@@ -2605,13 +2760,12 @@ function folderYearLabel(folder: SerializedFolder) {
       overflow-x: hidden;
       overscroll-behavior: contain;
       overflow-anchor: none;
-      scroll-snap-type: y mandatory;
       -webkit-overflow-scrolling: touch;
       transition: opacity 0.15s ease;
-      /* vertical padding percentages resolve against the container's
-         WIDTH per spec, not its height -- use a viewport-height calc
-         instead so the first/last row can actually reach center */
-      padding: calc(50dvh - 70px) 0;
+      /* Plain freely-scrolling list, no snap -- starts at the very
+         top; bottom padding just needs to clear the status icon (and,
+         next pass, a reserved now-playing line above it). */
+      padding: 0 0 var(--mobile-reserved-bottom, 96px);
       /* List mode: a fade at both scroll edges (not desktop's
          top-only mask, and not tied to distance from the selection --
          every row is otherwise fully opaque/readable). */
@@ -2630,31 +2784,20 @@ function folderYearLabel(folder: SerializedFolder) {
         transparent
       );
     }
-    /* Album view's center slot sits at ALBUM_CENTER_Y_RATIO (1/3) of
-       the wheel's own height instead of 1/2 -- the scroll padding
-       needed to let the first/last row actually reach that point is
-       no longer symmetric (less room needed above, more below), so
-       this overrides the 50/50 split above with a 1/3-2/3 one, kept
-       in sync with the same ratio createCenterObserver/
-       scrollSelectedIntoCenterBand use. Class toggled by JS
-       (rebuildForCurrentView) in step with `view`. */
-    .wheel.is-album-view {
-      padding: calc(100dvh / 3 - 70px) 0 calc(100dvh * 2 / 3 - 70px);
-    }
     /* List mode: straight vertical stack, full width of the padded
        .wheel-area box, no arc -- no x-offset, no per-row scale, no
        rotation/skew, and no distance-based opacity falloff (JS never
        sets transform/opacity/zIndex here at all; recomputeGeometry()
-       clears width/marginLeft rather than computing them). The
-       10px vertical margin reuses the same spacing already used for
-       this in wheel mode. */
+       clears width/marginLeft rather than computing them), and no
+       scroll-snap (plain momentum scrolling; scrolling changes
+       nothing about selection here). The 10px vertical margin reuses
+       the same spacing already used for this in wheel mode. */
     .wheel-row {
       position: relative;
       top: auto;
       left: auto;
       margin: 10px 0;
       width: 100%;
-      scroll-snap-align: center;
     }
     .docked-header {
       margin: 0 0 14px;
