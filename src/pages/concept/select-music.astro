@@ -248,32 +248,17 @@ function folderYearLabel(folder: SerializedFolder) {
 
       <div class="wheel-area" id="wheel-area">
         <!--
-          Fixed header for the wheel column, not a wheel item -- stays
-          in place while only its content crossfades between the two
-          views. Both pieces of content live in the DOM at once
-          (stacked in one grid cell below) so the fade can overlap;
-          `hidden` still gets toggled in sync so the back button drops
-          out of the tab order whenever it isn't the active one.
+          Top slot for the wheel column: a quiet "Albums" label in
+          albums view, replaced by the docked header (cloned from
+          docked-header-template below) once an album is open. The
+          docked header is the clicked album row itself, morphed into
+          place via the View Transitions API where supported -- see
+          the client script's beginEnterAlbum/beginExitAlbum.
         -->
-        <div class="wheel-plate" id="wheel-plate">
-          <div
-            class="wheel-plate-content wheel-plate-albums is-active"
-            id="wheel-plate-albums"
-          >
-            Select album
-          </div>
-          <div
-            class="wheel-plate-content wheel-plate-album"
-            id="wheel-plate-album"
-            hidden
-          >
-            <button class="wheel-plate-back" id="wheel-plate-back" type="button">
-              <span class="ic-collapse"></span>
-              Albums
-            </button>
-            <span class="wheel-plate-divider" aria-hidden="true">/</span>
-            <span class="wheel-plate-info" id="wheel-plate-info"></span>
-          </div>
+        <div class="wheel-top-slot" id="wheel-top-slot">
+          <span class="wheel-top-label is-active" id="wheel-top-label">
+            Albums
+          </span>
         </div>
 
         <ol
@@ -409,6 +394,52 @@ function folderYearLabel(folder: SerializedFolder) {
     <template id="genre-empty-template">
       <span class="genre-empty">No genre data</span>
     </template>
+    <!--
+      The docked header: not a wheel row (outside #wheel, never
+      touched by the arc/scale math), but reuses the exact same row
+      shape/icon markup so the View Transition between this and the
+      clicked album row has matching content to morph between. Cloned
+      once at init and reused for the page's whole lifetime; only its
+      text content and aria-label change per album.
+    -->
+    <template id="docked-header-template">
+      <button class="wheel-row docked-header" id="docked-header" type="button" hidden>
+        <span class="ic-collapse docked-chevron" aria-hidden="true"></span>
+        <span class="row-icon">
+          <svg
+            class="ic-album-cursor"
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="8" fill="var(--void)"></circle>
+            <circle
+              cx="12"
+              cy="12"
+              r="5"
+              fill="none"
+              stroke="var(--ash-dim)"
+              stroke-width="1"
+            ></circle>
+            <circle
+              class="ic-album-cursor-ring"
+              cx="12"
+              cy="12"
+              r="10"
+              fill="none"
+              stroke-width="2"
+              stroke-dasharray="53 10"
+              transform="rotate(-90 12 12)"
+            ></circle>
+          </svg>
+        </span>
+        <span class="row-text">
+          <span class="row-title"></span>
+          <span class="row-album"></span>
+        </span>
+      </button>
+    </template>
 
     <div class="mobile-status-wrap">
       <span class="mobile-status-label" id="mobile-status-label" hidden></span>
@@ -473,6 +504,20 @@ function folderYearLabel(folder: SerializedFolder) {
       audioUrl: string
     }
     type VisibleEntry = { item: WheelItem; posinset: number; setsize: number }
+    // Minimal shape for the (still-unstable-in-some-lib.dom-versions)
+    // View Transitions API -- declared locally rather than relying on
+    // a global type so this compiles regardless of the TS/lib version.
+    type ViewTransitionLike = {
+      ready: Promise<void>
+      updateCallbackDone: Promise<void>
+      finished: Promise<void>
+      skipTransition: () => void
+    }
+    type MorphSpec = {
+      oldEl: HTMLElement | null
+      getNewEl: () => HTMLElement | null
+      name: string
+    }
 
     let topLevelFolderIds: string[] = []
     let itemsById: Record<string, WheelItem> = {}
@@ -504,13 +549,8 @@ function folderYearLabel(folder: SerializedFolder) {
       "track-hero-play-btn",
     ) as HTMLButtonElement | null
     const trackHeroPlayIcon = document.getElementById("track-hero-play-icon")
-    const wheelPlate = document.getElementById("wheel-plate")
-    const wheelPlateAlbums = document.getElementById("wheel-plate-albums")
-    const wheelPlateAlbum = document.getElementById("wheel-plate-album")
-    const wheelPlateBack = document.getElementById(
-      "wheel-plate-back",
-    ) as HTMLButtonElement | null
-    const wheelPlateInfo = document.getElementById("wheel-plate-info")
+    const wheelTopSlot = document.getElementById("wheel-top-slot")
+    const wheelTopLabel = document.getElementById("wheel-top-label")
     const statsEl = document.getElementById("stats")
     const statsBpm = document.getElementById("stats-bpm")
     const statsGenres = document.getElementById("stats-genres")
@@ -537,16 +577,23 @@ function folderYearLabel(folder: SerializedFolder) {
     const genreEmptyTemplate = document.getElementById(
       "genre-empty-template",
     ) as HTMLTemplateElement | null
+    const dockedHeaderTemplate = document.getElementById(
+      "docked-header-template",
+    ) as HTMLTemplateElement | null
+
+    // Cloned once, reused for the page's whole lifetime -- only its
+    // text content, aria-label, and hidden state change per album.
+    const dockedHeaderSource = dockedHeaderTemplate?.content.firstElementChild
+    const dockedHeaderEl = dockedHeaderSource
+      ? (dockedHeaderSource.cloneNode(true) as HTMLButtonElement)
+      : null
+    if (dockedHeaderEl) wheelTopSlot?.appendChild(dockedHeaderEl)
 
     // ---------- constants ----------
     const ROW_HEIGHT = 64
     const EDGE_PADDING = 32
     const DESKTOP_ROW_WIDTH_RATIO = 0.62
     const DESKTOP_RADIUS_RATIO = 1.4
-    const MOBILE_ROW_EDGE_PADDING = 16
-    const MOBILE_CENTER_PROTRUSION_RATIO = 0.06
-    const MOBILE_CENTER_PROTRUSION_MAX = 24
-    const MOBILE_RADIUS_RATIO = 3.2
     const SCALE_FALLOFF = 0.08
     const SCALE_FLOOR = 0.72
     const OPACITY_FALLOFF = 0.22
@@ -561,7 +608,14 @@ function folderYearLabel(folder: SerializedFolder) {
     const SWEEP_OFFSET = 14 // rows, beyond RENDER_WINDOW -- fully off-screen
     const SWEEP_LEG_MS = 200
     const MOBILE_FADE_MS = 150
-    const PLATE_CROSSFADE_MS = 200 // matches SWEEP_LEG_MS -- one crossfade leg
+    // Fallback-only (no View Transitions support): a plain crossfade
+    // between the "Albums" label and the docked header.
+    const TOP_SLOT_FADE_MS = 200
+    // Where the album-view center slot sits, as a fraction of the
+    // wheel area's own height -- 1/2 (unchanged) in albums view, up
+    // near the docked header in album view so the selected track
+    // isn't stranded in empty space below it.
+    const ALBUM_CENTER_Y_RATIO = 1 / 3
 
     // ---------- state ----------
     let view: "albums" | "album" = "albums"
@@ -579,18 +633,33 @@ function folderYearLabel(folder: SerializedFolder) {
 
     // transition state (desktop sweep + mobile crossfade both use this
     // as the "is something in flight" guard). "pre-swap" = old content
-    // still showing, easing/fading out; "post-swap" = new content
-    // showing, easing/fading in.
-    let transitionPhase: "idle" | "pre-swap" | "post-swap" = "idle"
+    // still showing, easing/fading out; "morphing" = the doSwap DOM
+    // mutation + docked-header morph is in flight (view has already
+    // flipped, but the post-swap row sweep hasn't started yet -- only
+    // meaningfully distinct from "post-swap" while a View Transition
+    // is actually pending); "post-swap" = new content showing,
+    // easing/fading in.
+    let transitionPhase: "idle" | "pre-swap" | "morphing" | "post-swap" = "idle"
     let transitionDirection: 1 | -1 = 1
     let sweepRafId: number | null = null
     let mobileFadeTimeoutId: number | null = null
-    // Separate from the row-transition timers above: the plate never
-    // stops showing something (unlike the rows, it doesn't sweep off
-    // and back), it only crossfades its content, so it gets its own
-    // small pair of cancellable handles.
-    let plateFadeRafId: number | null = null
-    let plateFadeTimeoutId: number | null = null
+    let activeViewTransition: ViewTransitionLike | null = null
+    // Bumped by cancelActiveTransition() (always called at the start
+    // of a fresh runLevelTransition(), and directly by a mid-"pre-swap"
+    // reversal in requestBack()). Every async continuation (a sweep's
+    // onDone, a mobile timeout, a VT's .finished handler) captures the
+    // token in force when it was scheduled and checks it before acting
+    // -- a superseded continuation firing late (View Transition promises
+    // can't be cancelled, only reacted to) becomes a silent no-op
+    // instead of stepping on whatever transition replaced it.
+    let transitionToken = 0
+    // Fallback-only (no View Transitions support): crossfades the
+    // "Albums" label against the docked header, the same "unhide, one
+    // rAF later start the opacity transition, hide the other side once
+    // its own fade-out timeout fires" shape used elsewhere on this
+    // page for a hidden-toggled, opacity-faded element.
+    let topSlotFadeRafId: number | null = null
+    let topSlotFadeTimeoutId: number | null = null
 
     const mobileQuery = window.matchMedia(MOBILE_BREAKPOINT)
     const reducedMotionQuery = window.matchMedia(
@@ -652,42 +721,52 @@ function folderYearLabel(folder: SerializedFolder) {
     // ---------- wheel geometry (shared by desktop + mobile) ----------
     let currentRadius = 900
     let currentCenterProtrusion = 96
+    // Additional, view-dependent vertical shift applied on top of the
+    // arc's own d*ROW_HEIGHT math. Desktop (wheel mode) only -- mobile
+    // (list mode) has no per-row transform at all. Zero in albums
+    // view; negative (shifts up) in album view.
+    let currentCenterYOffset = 0
 
+    // Desktop (wheel mode) only: computes the arc geometry and syncs
+    // row/docked-header width and offset from the measured container.
+    // Mobile (list mode) is pure CSS -- full-width rows, no per-row
+    // JS sizing at all -- so this clears rather than sets those same
+    // inline properties there, in case a prior desktop pass left them
+    // behind after a resize across the breakpoint.
     function recomputeGeometry() {
-      const containerWidth = wheelEl!.clientWidth || 600
-      let rowWidth: number
       if (isMobileMode()) {
-        currentCenterProtrusion = Math.min(
-          MOBILE_CENTER_PROTRUSION_MAX,
-          containerWidth * MOBILE_CENTER_PROTRUSION_RATIO,
-        )
-        rowWidth = Math.max(
-          200,
-          containerWidth - currentCenterProtrusion - MOBILE_ROW_EDGE_PADDING * 2,
-        )
-        currentRadius = containerWidth * MOBILE_RADIUS_RATIO
-      } else {
-        rowWidth = Math.max(280, containerWidth * DESKTOP_ROW_WIDTH_RATIO)
-        currentCenterProtrusion = Math.max(
-          0,
-          containerWidth - rowWidth - EDGE_PADDING,
-        )
-        currentRadius = containerWidth * DESKTOP_RADIUS_RATIO
+        rowEls.forEach((row) => {
+          row.style.width = ""
+        })
+        if (dockedHeaderEl) {
+          dockedHeaderEl.style.width = ""
+          dockedHeaderEl.style.marginLeft = ""
+        }
+        return
       }
+
+      const containerWidth = wheelEl!.clientWidth || 600
+      const containerHeight = wheelEl!.clientHeight || 600
+      const rowWidth = Math.max(280, containerWidth * DESKTOP_ROW_WIDTH_RATIO)
+      currentCenterProtrusion = Math.max(0, containerWidth - rowWidth - EDGE_PADDING)
+      currentRadius = containerWidth * DESKTOP_RADIUS_RATIO
+
       rowEls.forEach((row) => {
         row.style.width = `${rowWidth}px`
       })
+      if (dockedHeaderEl) dockedHeaderEl.style.width = `${rowWidth}px`
 
-      // The plate's left edge tracks the row shape language's own
-      // anchor point: the center slot's rendered left edge on desktop
+      currentCenterYOffset =
+        view === "album" ? containerHeight * (ALBUM_CENTER_Y_RATIO - 0.5) : 0
+
+      // The docked header's left edge tracks the row shape language's
+      // own anchor point: the center slot's rendered left edge
       // (translateX(currentCenterProtrusion), where the selected row
-      // sits at d=0), or the centered row's left edge on mobile (rows
-      // are margin:auto within the container there).
-      if (wheelPlate) {
-        const plateOffset = isMobileMode()
-          ? (containerWidth - rowWidth) / 2
-          : currentCenterProtrusion
-        wheelPlate.style.marginLeft = `${Math.max(0, plateOffset)}px`
+      // sits at d=0) -- the same resting position the row it morphed
+      // from already sits at, so the View Transition has no
+      // width/position snap to paper over.
+      if (dockedHeaderEl) {
+        dockedHeaderEl.style.marginLeft = `${Math.max(0, currentCenterProtrusion)}px`
       }
     }
 
@@ -703,6 +782,9 @@ function folderYearLabel(folder: SerializedFolder) {
       return { x, scale, opacity }
     }
 
+    // Desktop (wheel mode) only -- mobile (list mode) lays rows out in
+    // normal document flow with no per-row transform/opacity at all,
+    // so it has no equivalent of this function.
     function applyDesktopFrame() {
       for (let i = 0; i < rowEls.length; i++) {
         const row = rowEls[i]
@@ -713,28 +795,11 @@ function folderYearLabel(folder: SerializedFolder) {
           continue
         }
         const { x, scale, opacity } = computeRowTransform(d)
-        const y = d * ROW_HEIGHT
+        const y = d * ROW_HEIGHT + currentCenterYOffset
         row.style.transform = `translate(${x}px, ${y}px) scale(${scale})`
         row.style.opacity = String(opacity)
         row.style.pointerEvents = "auto"
         row.style.zIndex = String(1000 - Math.round(Math.abs(d)))
-      }
-    }
-
-    function applyMobileFrame() {
-      const containerRect = wheelEl!.getBoundingClientRect()
-      const centerY = containerRect.top + containerRect.height / 2
-      for (const row of rowEls) {
-        const rect = row.getBoundingClientRect()
-        const rowCenterY = rect.top + rect.height / 2
-        const d = (rowCenterY - centerY) / ROW_HEIGHT
-        if (Math.abs(d) > RENDER_WINDOW) {
-          row.style.opacity = "0"
-          continue
-        }
-        const { x, scale, opacity } = computeRowTransform(d)
-        row.style.transform = `translateX(${x}px) scale(${scale})`
-        row.style.opacity = String(opacity)
       }
     }
 
@@ -794,56 +859,57 @@ function folderYearLabel(folder: SerializedFolder) {
       sweepRafId = requestAnimationFrame(frame)
     }
 
-    // ---------- mobile scroll-driven frame loop (in-place nav only) ----------
-    let mobileRafRunning = false
-    let lastMobileScrollTime = 0
-
-    function mobileFrame() {
-      applyMobileFrame()
-      if (performance.now() - lastMobileScrollTime < 200) {
-        requestAnimationFrame(mobileFrame)
-      } else {
-        mobileRafRunning = false
-      }
-    }
-
-    function kickMobileFrameLoop() {
-      lastMobileScrollTime = performance.now()
-      if (!mobileRafRunning) {
-        mobileRafRunning = true
-        requestAnimationFrame(mobileFrame)
-      }
-    }
-
-    wheelEl.addEventListener(
-      "scroll",
-      () => {
-        if (!isMobileMode()) return
-        kickMobileFrameLoop()
-      },
-      { passive: true },
-    )
-
     // ---------- mobile: detect centered row via IntersectionObserver ----------
-    const centerObserver = new IntersectionObserver(
-      (entries) => {
-        if (!isMobileMode() || transitionPhase !== "idle") return
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue
-          const id = (entry.target as HTMLElement).dataset.id
-          const index = visibleEntries.findIndex((e) => e.item.id === id)
-          if (index !== -1) selectIndex(index)
-        }
-      },
-      { root: wheelEl, rootMargin: "-49% 0px -49% 0px", threshold: 0 },
-    )
+    // rootMargin shrinks the observer's root to a thin band around
+    // the view's own center ratio (0.5 in albums view, up near
+    // ALBUM_CENTER_Y_RATIO in album view) -- since rootMargin can't be
+    // changed after construction, the observer itself is recreated by
+    // createCenterObserver() whenever the view (and so the ratio)
+    // changes, from rebuildForCurrentView().
+    function centerBandRootMargin(ratio: number) {
+      const halfBand = 1 // percent
+      const topPct = Math.max(0, ratio * 100 - halfBand)
+      const bottomPct = Math.max(0, (1 - ratio) * 100 - halfBand)
+      return `-${topPct}% 0px -${bottomPct}% 0px`
+    }
+    function createCenterObserver() {
+      return new IntersectionObserver(
+        (entries) => {
+          if (!isMobileMode() || transitionPhase !== "idle") return
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue
+            const id = (entry.target as HTMLElement).dataset.id
+            const index = visibleEntries.findIndex((e) => e.item.id === id)
+            if (index !== -1) selectIndex(index)
+          }
+        },
+        {
+          root: wheelEl,
+          rootMargin: centerBandRootMargin(
+            view === "album" ? ALBUM_CENTER_Y_RATIO : 0.5,
+          ),
+          threshold: 0,
+        },
+      )
+    }
+    let centerObserver = createCenterObserver()
+
+    // Scrolls the selected row to the view's own center ratio -- a
+    // manual scrollTop calculation rather than scrollIntoView(), since
+    // scrollIntoView's `block` option only offers "center" (50%), not
+    // an arbitrary fraction.
+    function scrollSelectedIntoCenterBand(behavior: ScrollBehavior) {
+      const row = rowEls[selectedIndex]
+      if (!row) return
+      const ratio = view === "album" ? ALBUM_CENTER_Y_RATIO : 0.5
+      const targetCenterY = wheelEl!.clientHeight * ratio
+      const rowCenterY = row.offsetTop + row.offsetHeight / 2
+      wheelEl!.scrollTo({ top: rowCenterY - targetCenterY, behavior })
+    }
 
     function syncVisualPosition() {
       if (isMobileMode()) {
-        rowEls[selectedIndex]?.scrollIntoView({
-          block: "center",
-          behavior: prefersReducedMotion() ? "auto" : "smooth",
-        })
+        scrollSelectedIntoCenterBand(prefersReducedMotion() ? "auto" : "smooth")
       } else {
         startDesktopAnimation()
       }
@@ -1146,64 +1212,123 @@ function folderYearLabel(folder: SerializedFolder) {
       refreshPlaybackUI()
     }
 
-    function updatePlateAlbumInfo(folder: FolderItem) {
-      if (!wheelPlateInfo) return
-      wheelPlateInfo.textContent = [
-        folder.title,
-        folderYearLabel(folder),
-        pluralTracks(folder.trackCount),
-      ]
-        .filter(Boolean)
-        .join(" · ")
+    // Same slug-safety net as folder/track item ids -- album ids come
+    // straight from content-collection slugs, which should already be
+    // identifier-safe, but view-transition-name is a CSS custom-ident
+    // and this keeps it that way regardless.
+    function albumMorphName(albumId: string) {
+      return `album-header-${albumId.replace(/[^a-zA-Z0-9_-]/g, "-")}`
     }
 
-    function cancelPlateFade() {
-      if (plateFadeRafId !== null) {
-        cancelAnimationFrame(plateFadeRafId)
-        plateFadeRafId = null
+    function updateDockedHeader(folder: FolderItem) {
+      if (!dockedHeaderEl) return
+      const titleEl = dockedHeaderEl.querySelector<HTMLElement>(".row-title")
+      const metaEl = dockedHeaderEl.querySelector<HTMLElement>(".row-album")
+      if (titleEl) titleEl.textContent = folder.title
+      if (metaEl) {
+        metaEl.textContent = [
+          folderYearLabel(folder),
+          pluralTracks(folder.trackCount),
+          folder.totalDuration,
+        ]
+          .filter(Boolean)
+          .join(" · ")
       }
-      if (plateFadeTimeoutId !== null) {
-        window.clearTimeout(plateFadeTimeoutId)
-        plateFadeTimeoutId = null
+      dockedHeaderEl.setAttribute(
+        "aria-label",
+        `Back to albums, ${folder.title}, ${pluralTracks(folder.trackCount)}`,
+      )
+    }
+
+    function cancelTopSlotFade() {
+      if (topSlotFadeRafId !== null) {
+        cancelAnimationFrame(topSlotFadeRafId)
+        topSlotFadeRafId = null
+      }
+      if (topSlotFadeTimeoutId !== null) {
+        window.clearTimeout(topSlotFadeTimeoutId)
+        topSlotFadeTimeoutId = null
       }
     }
 
-    // The plate itself never moves; only its content crossfades
-    // between the "Select album" label and the back-button/album-info
-    // group, at the same swap moment the rows' own content changes.
-    // Both pieces stay in the DOM at once (stacked in one grid cell in
-    // CSS) so they can overlap during the fade -- cancelPlateFade()
-    // guards against a reversal calling this again before the previous
-    // call's own timers have fired, which would otherwise hide
-    // whichever content this call just made active.
-    function setPlateView(target: "albums" | "album") {
-      const incoming = target === "album" ? wheelPlateAlbum : wheelPlateAlbums
-      const outgoing = target === "album" ? wheelPlateAlbums : wheelPlateAlbum
+    // Fallback only (no View Transitions support, motion allowed): a
+    // plain opacity crossfade between the "Albums" label and the
+    // docked header, since there's no morph animation to carry the
+    // handoff instead. Same "unhide, one rAF later start the fade,
+    // hide the other side once its own timeout fires" shape as the
+    // rest of this page's hidden+opacity elements.
+    function crossfadeTopSlot(target: "albums" | "album") {
+      const incoming = target === "album" ? dockedHeaderEl : wheelTopLabel
+      const outgoing = target === "album" ? wheelTopLabel : dockedHeaderEl
       if (!incoming || !outgoing) return
 
-      cancelPlateFade()
-
-      if (prefersReducedMotion()) {
-        outgoing.classList.remove("is-active")
-        outgoing.hidden = true
-        incoming.hidden = false
+      cancelTopSlotFade()
+      incoming.hidden = false
+      topSlotFadeRafId = requestAnimationFrame(() => {
+        topSlotFadeRafId = null
         incoming.classList.add("is-active")
+        outgoing.classList.remove("is-active")
+        topSlotFadeTimeoutId = window.setTimeout(() => {
+          topSlotFadeTimeoutId = null
+          outgoing.hidden = true
+        }, TOP_SLOT_FADE_MS)
+      })
+    }
+
+    // Non-animated hide/show for the label vs. docked header -- used
+    // both under prefers-reduced-motion and inside a View Transition
+    // callback, where the morph itself (or the reduced-motion instant
+    // cut) is the only visible change; a CSS opacity fade layered on
+    // top would either be invisible (VT freezes the live DOM for its
+    // duration) or actively wrong (reduced motion).
+    function applyTopSlotVisibility(target: "albums" | "album") {
+      cancelTopSlotFade()
+      if (wheelTopLabel) {
+        wheelTopLabel.hidden = target !== "albums"
+        wheelTopLabel.classList.toggle("is-active", target === "albums")
+      }
+      if (dockedHeaderEl) {
+        dockedHeaderEl.hidden = target !== "album"
+        dockedHeaderEl.classList.toggle("is-active", target === "album")
+      }
+    }
+
+    // Wraps a doSwap in a View Transition when supported, tagging
+    // morph.oldEl (captured before the callback runs) and whatever
+    // morph.getNewEl() resolves to once doSwap has rebuilt the DOM
+    // (captured after) with the same view-transition-name, so the
+    // browser morphs position/size/content between them instead of a
+    // plain cut. Falls back to calling doSwap directly, synchronously,
+    // when the API is unsupported.
+    function startMorphTransition(
+      token: number,
+      doSwap: () => void,
+      morph: MorphSpec,
+      onComplete: () => void,
+    ) {
+      const startViewTransition = (
+        document as unknown as {
+          startViewTransition?: (cb: () => void) => ViewTransitionLike
+        }
+      ).startViewTransition
+      if (!startViewTransition) {
+        doSwap()
+        onComplete()
         return
       }
-
-      incoming.hidden = false
-      // One frame between unhiding and starting the opacity transition
-      // -- same coalescing risk as the row/hero fades elsewhere on
-      // this page (toggling `hidden` and an opacity-transition class
-      // in one synchronous tick risks the browser skipping the fade).
-      plateFadeRafId = requestAnimationFrame(() => {
-        plateFadeRafId = null
-        incoming.classList.add("is-active")
-        outgoing.classList.remove("is-active")
-        plateFadeTimeoutId = window.setTimeout(() => {
-          plateFadeTimeoutId = null
-          outgoing.hidden = true
-        }, PLATE_CROSSFADE_MS)
+      if (morph.oldEl) morph.oldEl.style.viewTransitionName = morph.name
+      let newEl: HTMLElement | null = null
+      const vt = startViewTransition.call(document, () => {
+        doSwap()
+        newEl = morph.getNewEl()
+        if (newEl) newEl.style.viewTransitionName = morph.name
+      })
+      activeViewTransition = vt
+      vt.finished.finally(() => {
+        if (morph.oldEl) morph.oldEl.style.viewTransitionName = ""
+        if (newEl) (newEl as HTMLElement).style.viewTransitionName = ""
+        if (activeViewTransition === vt) activeViewTransition = null
+        if (token === transitionToken) onComplete()
       })
     }
 
@@ -1305,10 +1430,10 @@ function folderYearLabel(folder: SerializedFolder) {
       wheelPosition = selectedIndex
       targetIndex = selectedIndex
 
+      wheelEl!.classList.toggle("is-album-view", view === "album")
       recomputeGeometry()
       if (isMobileMode()) {
-        rowEls[selectedIndex]?.scrollIntoView({ block: "center", behavior: "auto" })
-        applyMobileFrame()
+        scrollSelectedIntoCenterBand("auto")
       } else {
         applyDesktopFrame()
       }
@@ -1317,7 +1442,11 @@ function folderYearLabel(folder: SerializedFolder) {
       updateHero()
       updateAriaSelected()
 
+      // rootMargin can't be edited after construction, so a view
+      // change (different center ratio) means a fresh observer, not
+      // just re-observing the new rows on the old one.
       centerObserver.disconnect()
+      centerObserver = createCenterObserver()
       rowEls.forEach((row) => centerObserver.observe(row))
 
       attachRowListeners()
@@ -1337,46 +1466,86 @@ function folderYearLabel(folder: SerializedFolder) {
     }
 
     // ---------- level transitions ----------
-    // transitionPhase tracks "have we swapped the DOM yet" for the
-    // CURRENT transition, independent of platform: "pre-swap" (old
-    // content still showing, easing/fading out) or "post-swap" (new
-    // content showing, easing/fading in). transitionDirection tracks
-    // which way: entering an album (+1) or going back (-1). Desktop
-    // drives this with animateSweep()/sweepRafId; mobile with a plain
-    // opacity crossfade on a timer (mobileFadeTimeoutId). Both are
-    // cancelled together so reversing mid-transition can never leave
-    // a stale timer/rAF to fire later and collide with whatever
-    // starts next.
+    // transitionPhase tracks how far the CURRENT transition has gotten,
+    // independent of platform: "pre-swap" (old content still showing,
+    // easing/fading out) -> "morphing" (doSwap has run, view/DOM
+    // already reflect the new level, a View Transition may still be
+    // animating the docked-header morph) -> "post-swap" (new content
+    // showing, easing/fading in). transitionDirection tracks which
+    // way: entering an album (+1) or going back (-1). Desktop drives
+    // the sweep legs with animateSweep()/sweepRafId; mobile with a
+    // plain opacity crossfade on a timer (mobileFadeTimeoutId); the
+    // "morphing" leg (both platforms) with startMorphTransition()/
+    // activeViewTransition. All three are cancelled together, and
+    // transitionToken is bumped, so reversing mid-transition can never
+    // leave a stale timer/rAF/VT-promise to fire later and collide
+    // with whatever starts next.
     function cancelActiveTransition() {
+      transitionToken++
       cancelSweep()
       if (mobileFadeTimeoutId !== null) {
         window.clearTimeout(mobileFadeTimeoutId)
         mobileFadeTimeoutId = null
       }
+      if (activeViewTransition) {
+        activeViewTransition.skipTransition()
+        activeViewTransition = null
+      }
     }
 
-    function runLevelTransition(direction: 1 | -1, doSwap: () => void) {
+    function runLevelTransition(
+      direction: 1 | -1,
+      doSwap: () => void,
+      morph: MorphSpec,
+    ) {
       cancelActiveTransition()
+      const token = transitionToken
       transitionDirection = direction
+      const targetView: "albums" | "album" = direction === 1 ? "album" : "albums"
 
       if (prefersReducedMotion()) {
         doSwap()
+        applyTopSlotVisibility(targetView)
         transitionPhase = "idle"
         return
       }
+
+      const supportsViewTransitions =
+        typeof (document as unknown as { startViewTransition?: unknown })
+          .startViewTransition === "function"
 
       if (isMobileMode()) {
         transitionPhase = "pre-swap"
         wheelEl!.style.opacity = "0"
         mobileFadeTimeoutId = window.setTimeout(() => {
+          if (token !== transitionToken) return
           mobileFadeTimeoutId = null
-          doSwap()
-          transitionPhase = "post-swap"
-          mobileFadeTimeoutId = window.setTimeout(() => {
-            mobileFadeTimeoutId = null
-            wheelEl!.style.opacity = "1"
-            transitionPhase = "idle"
-          }, 20)
+          transitionPhase = "morphing"
+          const finish = () => {
+            if (token !== transitionToken) return
+            transitionPhase = "post-swap"
+            mobileFadeTimeoutId = window.setTimeout(() => {
+              if (token !== transitionToken) return
+              mobileFadeTimeoutId = null
+              wheelEl!.style.opacity = "1"
+              transitionPhase = "idle"
+            }, 20)
+          }
+          if (supportsViewTransitions) {
+            startMorphTransition(
+              token,
+              () => {
+                doSwap()
+                applyTopSlotVisibility(targetView)
+              },
+              morph,
+              finish,
+            )
+          } else {
+            doSwap()
+            crossfadeTopSlot(targetView)
+            finish()
+          }
         }, MOBILE_FADE_MS)
         return
       }
@@ -1384,16 +1553,40 @@ function folderYearLabel(folder: SerializedFolder) {
       transitionPhase = "pre-swap"
       const startPos = wheelPosition
       animateSweep(startPos, startPos + direction * SWEEP_OFFSET, SWEEP_LEG_MS, () => {
-        doSwap()
-        const finalIndex = selectedIndex
-        wheelPosition = finalIndex + direction * SWEEP_OFFSET
-        applyDesktopFrame()
-        transitionPhase = "post-swap"
-        animateSweep(wheelPosition, finalIndex, SWEEP_LEG_MS, () => {
-          wheelPosition = finalIndex
-          targetIndex = finalIndex
-          transitionPhase = "idle"
-        })
+        if (token !== transitionToken) return
+        transitionPhase = "morphing"
+        let finalIndex = 0
+        const wrappedSwap = () => {
+          doSwap()
+          finalIndex = selectedIndex
+          wheelPosition = finalIndex + direction * SWEEP_OFFSET
+          applyDesktopFrame()
+        }
+        const finish = () => {
+          if (token !== transitionToken) return
+          transitionPhase = "post-swap"
+          animateSweep(wheelPosition, finalIndex, SWEEP_LEG_MS, () => {
+            if (token !== transitionToken) return
+            wheelPosition = finalIndex
+            targetIndex = finalIndex
+            transitionPhase = "idle"
+          })
+        }
+        if (supportsViewTransitions) {
+          startMorphTransition(
+            token,
+            () => {
+              wrappedSwap()
+              applyTopSlotVisibility(targetView)
+            },
+            morph,
+            finish,
+          )
+        } else {
+          wrappedSwap()
+          crossfadeTopSlot(targetView)
+          finish()
+        }
       })
     }
 
@@ -1417,25 +1610,56 @@ function folderYearLabel(folder: SerializedFolder) {
       playLevelSound("open")
       announceLevelChange()
 
-      runLevelTransition(1, () => {
-        view = "album"
-        if (!opts.fromHistory) updateUrlForAlbum(albumId)
-        rebuildForCurrentView()
-        updatePlateAlbumInfo(folder)
-        setPlateView("album")
-      })
+      // The clicked row -- morph's "old" element -- only exists to
+      // find if we're actually leaving the albums list right now (a
+      // deep-link/popstate entry with no prior albums view in the DOM
+      // has none, and the morph just degrades to the named element
+      // "appearing" from nothing).
+      const sourceRow =
+        view === "albums"
+          ? (rowEls[visibleEntries.findIndex((e) => e.item.id === albumId)] ??
+            null)
+          : null
+
+      runLevelTransition(
+        1,
+        () => {
+          view = "album"
+          if (!opts.fromHistory) updateUrlForAlbum(albumId)
+          rebuildForCurrentView()
+          updateDockedHeader(folder)
+        },
+        {
+          oldEl: sourceRow,
+          getNewEl: () => dockedHeaderEl,
+          name: albumMorphName(albumId),
+        },
+      )
     }
 
     function beginExitAlbum(opts: { fromHistory?: boolean } = {}) {
       playLevelSound("close")
       announceLevelChange()
 
-      runLevelTransition(-1, () => {
-        view = "albums"
-        if (!opts.fromHistory) updateUrlForAlbum(null)
-        rebuildForCurrentView()
-        setPlateView("albums")
-      })
+      const albumId = selectedAlbumId
+
+      runLevelTransition(
+        -1,
+        () => {
+          view = "albums"
+          if (!opts.fromHistory) updateUrlForAlbum(null)
+          rebuildForCurrentView()
+        },
+        {
+          oldEl: dockedHeaderEl,
+          getNewEl: () =>
+            albumId
+              ? (rowEls[visibleEntries.findIndex((e) => e.item.id === albumId)] ??
+                null)
+              : null,
+          name: albumId ? albumMorphName(albumId) : "album-header-exit",
+        },
+      )
     }
 
     function performBackNavigation() {
@@ -1473,8 +1697,11 @@ function folderYearLabel(folder: SerializedFolder) {
       }
 
       // Mid an ENTER transition -- reverse cleanly from here, on
-      // whichever platform's mechanism is actually running.
+      // whichever platform's mechanism (or in-flight View Transition)
+      // is actually running. cancelActiveTransition() bumps the token,
+      // so this call's own token is captured fresh right after.
       cancelActiveTransition()
+      const myToken = transitionToken
 
       if (transitionPhase === "pre-swap") {
         // DOM not yet swapped -- nothing was ever entered, so there's
@@ -1487,6 +1714,7 @@ function folderYearLabel(folder: SerializedFolder) {
           transitionDirection = -1
           transitionPhase = "post-swap"
           animateSweep(wheelPosition, restIndex, SWEEP_LEG_MS, () => {
+            if (myToken !== transitionToken) return
             wheelPosition = restIndex
             targetIndex = restIndex
             transitionPhase = "idle"
@@ -1495,14 +1723,19 @@ function folderYearLabel(folder: SerializedFolder) {
         return
       }
 
-      // post-swap: DOM already swapped to the album's tracks --
-      // redirect straight into the real exit, continuing from here.
+      // "morphing" (the VT already applied the swap; view/DOM already
+      // reflect the album, but the header morph may still be
+      // animating -- skipTransition() above already jumped it to its
+      // end state) or "post-swap" (VT long finished, rows already
+      // sweeping in) -- both mean the album view is already fully
+      // showing, so redirect straight into a real exit rather than
+      // trying to reverse the row-morph mid-flight.
       if (isMobileMode()) wheelEl!.style.opacity = "1"
       transitionPhase = "idle"
       performBackNavigation()
     }
 
-    wheelPlateBack?.addEventListener("click", requestBack)
+    dockedHeaderEl?.addEventListener("click", requestBack)
 
     window.addEventListener("popstate", () => {
       const params = new URLSearchParams(location.search)
@@ -1640,6 +1873,13 @@ function folderYearLabel(folder: SerializedFolder) {
     )
 
     // ---------- keep selection in sync across the mobile/desktop breakpoint ----------
+    // Switches between "wheel mode" (desktop, arced/transformed rows)
+    // and "list mode" (mobile, plain document flow) -- clears any
+    // inline transform/opacity/zIndex/pointerEvents a prior wheel-mode
+    // pass may have left on the rows regardless of which way we're
+    // switching (a no-op in list mode, which never sets them);
+    // recomputeGeometry() itself handles clearing/(re)setting width
+    // and the docked header's offset for whichever mode is now active.
     mobileQuery.addEventListener("change", () => {
       rowEls.forEach((row) => {
         row.style.transform = ""
@@ -1650,8 +1890,7 @@ function folderYearLabel(folder: SerializedFolder) {
       recomputeGeometry()
       if (isMobileMode()) {
         requestAnimationFrame(() => {
-          rowEls[selectedIndex]?.scrollIntoView({ block: "center", behavior: "auto" })
-          applyMobileFrame()
+          scrollSelectedIntoCenterBand("auto")
         })
       } else {
         wheelPosition = selectedIndex
@@ -1667,8 +1906,7 @@ function folderYearLabel(folder: SerializedFolder) {
       resizeRafId = requestAnimationFrame(() => {
         resizeRafId = null
         recomputeGeometry()
-        if (isMobileMode()) applyMobileFrame()
-        else applyDesktopFrame()
+        if (!isMobileMode()) applyDesktopFrame()
       })
     })
 
@@ -1972,70 +2210,111 @@ function folderYearLabel(folder: SerializedFolder) {
     flex-direction: column;
   }
 
-  /* Fixed header for the wheel column, sized to its content (not the
-     row's full width) -- reuses the row's own shape language (left
-     radius, angled right end, surface/border tokens) at a smaller
-     size. Sits in normal flow above the wheel rather than being
-     absolutely positioned/overlaid, so the wheel's own box starts
-     below it and never needs to track it. */
-  .wheel-plate {
+  /* Top slot for the wheel column: the "Albums" label and the docked
+     header share one grid cell so the fallback crossfade (no View
+     Transitions support) can overlap them; under a morph, only one is
+     ever unhidden at a time so the shared cell is just spare capacity. */
+  .wheel-top-slot {
     position: relative;
     z-index: 1;
     flex: none;
-    align-self: flex-start;
     display: grid;
     margin: 0 0 14px;
-    padding: 8px 18px;
-    background: var(--static);
-    border: 1px solid var(--line);
-    border-radius: 999px 32px 32px 999px;
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    color: var(--ash);
   }
-  /* Both pieces of content share one grid cell so they can overlap
-     during the crossfade instead of the plate resizing under them. */
-  .wheel-plate-content {
+  .wheel-top-label,
+  .docked-header {
     grid-column: 1;
     grid-row: 1;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    white-space: nowrap;
+  }
+  .wheel-top-label {
+    align-self: center;
+    padding: 0 4px;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ash-dim);
+  }
+  /* The docked header IS the clicked album row, morphed in place --
+     reuses .wheel-row's shape/surface/border/radius wholesale, then
+     overrides everything about its own arc-row positioning (it's a
+     normal-flow element here, not absolutely arced) and compresses
+     the height slightly (DOCKED_HEADER_HEIGHT: ~44px via padding,
+     vs. a normal row's ~56px). Width is kept in sync with row width
+     by JS (recomputeGeometry) rather than a CSS percentage, so a
+     View Transition morph never has to paper over a width snap. */
+  .docked-header {
+    position: relative;
+    top: auto;
+    left: auto;
+    align-self: flex-start;
+    margin-top: 0;
+    padding: 8px 18px 8px 14px;
+    gap: 10px;
+    transform: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .docked-chevron {
+    flex: none;
+    color: var(--ash);
+  }
+  .docked-header:hover .docked-chevron,
+  .docked-header:hover .row-title {
+    color: var(--flare);
+  }
+  .docked-header:focus-visible {
+    outline: 2px solid var(--dusk);
+    outline-offset: 2px;
+  }
+  /* Always shown as "open" (like DDR's open-folder glow), not tied to
+     .is-selected -- the docked header isn't a wheel row and never
+     gets that class. */
+  .docked-header .ic-album-cursor-ring {
+    stroke: var(--dusk);
+  }
+  /* Fallback only (no View Transitions support): plain opacity
+     crossfade between the label and the docked header. Under a real
+     morph, doSwap toggles `hidden` directly with no animation class,
+     so this transition never fires (VT freezes the live DOM for its
+     own duration regardless). */
+  .wheel-top-label,
+  .docked-header {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
   }
-  .wheel-plate-content.is-active {
+  .wheel-top-label.is-active,
+  .docked-header.is-active {
     opacity: 1;
     pointer-events: auto;
   }
   @media (prefers-reduced-motion: reduce) {
-    .wheel-plate-content {
+    .wheel-top-label,
+    .docked-header {
       transition: none;
     }
   }
-  .wheel-plate-back {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font: inherit;
-    color: var(--ash);
-    background: transparent;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    transition: color 0.15s;
+
+  /* Suppress the View Transition API's default whole-page crossfade
+     (the "root" pair) -- only the docked-header<->row morph (its own
+     named group, default animation left intact) should visibly
+     animate; everything else just cuts over, which lines up with how
+     the incoming tracks are already pre-positioned off-screen the
+     instant doSwap runs. :global() since these pseudo-elements aren't
+     scoped to any actual DOM element for Astro to attach its scoping
+     attribute to. */
+  :global(::view-transition-group(*)) {
+    animation-duration: 220ms;
   }
-  .wheel-plate-back:hover {
-    color: var(--flare);
+  :global(::view-transition-old(*)),
+  :global(::view-transition-new(*)) {
+    animation-duration: 220ms;
   }
-  .wheel-plate-back:focus-visible {
-    outline: 2px solid var(--dusk);
-    outline-offset: 2px;
-  }
-  .wheel-plate-divider {
-    color: var(--line);
+  :global(::view-transition-old(root)),
+  :global(::view-transition-new(root)) {
+    animation: none;
   }
 
   .wheel {
@@ -2049,10 +2328,12 @@ function folderYearLabel(folder: SerializedFolder) {
     padding: 0;
     outline: none;
     /* Rows are hard-clipped at the wheel's own edge (overflow:hidden
-       above); this softens that clip right below the plate so a row
-       fades out rather than getting cut off mid-shape as it nears it. */
-    mask-image: linear-gradient(to bottom, transparent, black 32px);
-    -webkit-mask-image: linear-gradient(to bottom, transparent, black 32px);
+       above); this softens that clip right below the top slot so a
+       row fades out rather than getting cut off mid-shape as it nears
+       it -- taller than a single-line label's worth since album view
+       packs rows more densely above the raised center slot. */
+    mask-image: linear-gradient(to bottom, transparent, black 56px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 56px);
   }
   .wheel:focus,
   .wheel:focus-visible {
@@ -2313,6 +2594,11 @@ function folderYearLabel(folder: SerializedFolder) {
     .wheel-area {
       flex: 1;
       min-height: 0;
+      /* Side gutter for everything in this column -- the top slot
+         (label/docked header) and the rows below both inherit it by
+         sitting inside this padded box, rather than each carrying
+         their own matching side padding independently. */
+      padding: 0 16px;
     }
     .wheel {
       overflow-y: auto;
@@ -2326,21 +2612,52 @@ function folderYearLabel(folder: SerializedFolder) {
          WIDTH per spec, not its height -- use a viewport-height calc
          instead so the first/last row can actually reach center */
       padding: calc(50dvh - 70px) 0;
+      /* List mode: a fade at both scroll edges (not desktop's
+         top-only mask, and not tied to distance from the selection --
+         every row is otherwise fully opaque/readable). */
+      mask-image: linear-gradient(
+        to bottom,
+        transparent,
+        black 56px,
+        black calc(100% - 56px),
+        transparent
+      );
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        transparent,
+        black 56px,
+        black calc(100% - 56px),
+        transparent
+      );
     }
+    /* Album view's center slot sits at ALBUM_CENTER_Y_RATIO (1/3) of
+       the wheel's own height instead of 1/2 -- the scroll padding
+       needed to let the first/last row actually reach that point is
+       no longer symmetric (less room needed above, more below), so
+       this overrides the 50/50 split above with a 1/3-2/3 one, kept
+       in sync with the same ratio createCenterObserver/
+       scrollSelectedIntoCenterBand use. Class toggled by JS
+       (rebuildForCurrentView) in step with `view`. */
+    .wheel.is-album-view {
+      padding: calc(100dvh / 3 - 70px) 0 calc(100dvh * 2 / 3 - 70px);
+    }
+    /* List mode: straight vertical stack, full width of the padded
+       .wheel-area box, no arc -- no x-offset, no per-row scale, no
+       rotation/skew, and no distance-based opacity falloff (JS never
+       sets transform/opacity/zIndex here at all; recomputeGeometry()
+       clears width/marginLeft rather than computing them). The
+       10px vertical margin reuses the same spacing already used for
+       this in wheel mode. */
     .wheel-row {
       position: relative;
       top: auto;
       left: auto;
-      margin: 10px auto;
-      width: 90%; /* fallback; JS sets the real width from the measured container */
+      margin: 10px 0;
+      width: 100%;
       scroll-snap-align: center;
     }
-    .wheel-row.is-selected .row-title {
-      white-space: normal;
-      display: -webkit-box;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
-      overflow: hidden;
+    .docked-header {
+      margin: 0 0 14px;
     }
     .mobile-status-wrap {
       display: flex;
