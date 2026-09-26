@@ -187,10 +187,25 @@ function folderYearLabel(folder: SerializedFolder) {
       </button>
     </div>
 
-    <div class="wheel-grid">
-      <div class="left-col">
+    <div class="wheel-grid" id="wheel-grid">
+      <div class="left-col" id="left-col">
         <div class="hero" id="hero">
           <div class="hero-albums-view" id="hero-albums-view">
+            <!--
+              Mobile only: merges the old separate docked-header back
+              control into this same hero block, so album info shows
+              exactly once. Hidden on desktop (never unhidden there)
+              and in mobile albums view (nothing to go back from).
+            -->
+            <button
+              class="mobile-hero-back"
+              id="mobile-hero-back"
+              type="button"
+              hidden
+              aria-label="Back to albums"
+            >
+              <span class="ic-collapse" aria-hidden="true"></span>
+            </button>
             <div class="hero-top">
               <h2 class="hero-title" id="albums-hero-title">—</h2>
               <button
@@ -534,8 +549,13 @@ function folderYearLabel(folder: SerializedFolder) {
 
     if (topLevelFolderIds.length === 0) return
 
+    const wheelGridEl = document.getElementById("wheel-grid")
+    const leftCol = document.getElementById("left-col")
     const heroAlbumsView = document.getElementById("hero-albums-view")
     const heroAlbumView = document.getElementById("hero-album-view")
+    const mobileHeroBack = document.getElementById(
+      "mobile-hero-back",
+    ) as HTMLButtonElement | null
     const albumsHeroTitle = document.getElementById("albums-hero-title")
     const albumsHeroYear = document.getElementById("albums-hero-year")
     const albumsHeroCount = document.getElementById("albums-hero-count")
@@ -1206,12 +1226,24 @@ function folderYearLabel(folder: SerializedFolder) {
     // no separate lookup is needed for the mobile case. Desktop's
     // per-track hero only ever shows in desktop's own album view.
     function updateHero() {
-      const showFolderHero = view === "albums" || (isMobileMode() && view === "album")
-      const showTrackHero = view === "album" && !isMobileMode()
+      const mobile = isMobileMode()
+      // Mobile: folder-summary hero only in album view (merged with
+      // the back button into one header there); nothing at all in
+      // albums view ("no hero card... just a small 'Albums' label,
+      // then the list"). Desktop: unchanged, folder hero in albums
+      // view, per-track hero in album view.
+      const showFolderHero = mobile ? view === "album" : view === "albums"
+      const showTrackHero = view === "album" && !mobile
 
+      // .left-col itself (not just its two hero-view children) is
+      // hidden in mobile albums view -- otherwise .hero's own
+      // padding/background still renders as an empty box even with
+      // both children hidden.
+      if (leftCol) leftCol.hidden = mobile && view === "albums"
       if (heroAlbumsView) heroAlbumsView.hidden = !showFolderHero
       if (heroAlbumView) heroAlbumView.hidden = !showTrackHero
       if (statsEl) statsEl.hidden = !showTrackHero
+      if (mobileHeroBack) mobileHeroBack.hidden = !(mobile && view === "album")
 
       if (showFolderHero) {
         const folder = getFolder(selectedAlbumId)
@@ -1335,6 +1367,23 @@ function folderYearLabel(folder: SerializedFolder) {
       }
     }
 
+    // Mobile only: the docked header (row<->header View Transition
+    // morph) is a desktop-only concept now -- its mobile equivalent is
+    // the merged album-summary hero + back button instead (see
+    // updateHero()), so this only ever shows the "Albums" label, and
+    // only in albums view; nothing shows in the top slot at all in
+    // album view (avoiding a stray gap from an otherwise-empty slot).
+    // Called from rebuildForCurrentView() so it's correct after every
+    // entry path -- level transitions on both directions, and the
+    // deep-link/popstate initial-paint case that never goes through
+    // runLevelTransition() at all.
+    function applyMobileTopSlot() {
+      if (!isMobileMode()) return
+      if (wheelTopLabel) wheelTopLabel.hidden = view !== "albums"
+      if (dockedHeaderEl) dockedHeaderEl.hidden = true
+      if (wheelTopSlot) wheelTopSlot.hidden = view !== "albums"
+    }
+
     // Wraps a doSwap in a View Transition when supported, tagging
     // morph.oldEl (captured before the callback runs) and whatever
     // morph.getNewEl() resolves to once doSwap has rebuilt the DOM
@@ -1424,6 +1473,35 @@ function folderYearLabel(folder: SerializedFolder) {
         }
       })
     }
+
+    // Mobile only: the top/bottom feather masks on the unified scroll
+    // container only show once there's actually somewhere to scroll
+    // to/from -- not at rest, and not tied to distance from a
+    // selection (there isn't one). Driven by CSS custom properties on
+    // .wheel-grid (see the mobile media query) so this never touches
+    // row styles directly, just two classes on the scroll container
+    // itself, rAF-throttled so a scroll event never re-triggers style
+    // work more than once per frame.
+    let scrollMaskRafPending = false
+    function updateScrollMasks() {
+      scrollMaskRafPending = false
+      if (!wheelGridEl || !isMobileMode()) return
+      const { scrollTop, scrollHeight, clientHeight } = wheelGridEl
+      wheelGridEl.classList.toggle("show-top-fade", scrollTop > 0)
+      wheelGridEl.classList.toggle(
+        "show-bottom-fade",
+        scrollTop + clientHeight < scrollHeight - 1,
+      )
+    }
+    wheelGridEl?.addEventListener(
+      "scroll",
+      () => {
+        if (scrollMaskRafPending) return
+        scrollMaskRafPending = true
+        requestAnimationFrame(updateScrollMasks)
+      },
+      { passive: true },
+    )
 
     function announceSelection() {
       const entry = visibleEntries[selectedIndex]
@@ -1520,16 +1598,18 @@ function folderYearLabel(folder: SerializedFolder) {
         // playing track if it's in here, instantly, no centering --
         // otherwise start at the top. Going back to albums: restore
         // the exact scroll position saved on the way in, rather than
-        // scrolling to anything.
+        // scrolling to anything. Scrolls the unified scroll container
+        // (.wheel-grid, hero+list together), not #wheel -- it's no
+        // longer independently scrollable.
         if (view === "album") {
           const idx = findActiveEntryIndex()
           if (idx !== -1) {
             rowEls[idx]?.scrollIntoView({ block: "center", behavior: "auto" })
-          } else {
-            wheelEl!.scrollTop = 0
+          } else if (wheelGridEl) {
+            wheelGridEl.scrollTop = 0
           }
-        } else {
-          wheelEl!.scrollTop = savedAlbumsScrollTop
+        } else if (wheelGridEl) {
+          wheelGridEl.scrollTop = savedAlbumsScrollTop
         }
       } else {
         applyDesktopFrame()
@@ -1537,10 +1617,12 @@ function folderYearLabel(folder: SerializedFolder) {
 
       wheelEl!.setAttribute("aria-label", currentViewLabel())
       applyModeRoles()
+      applyMobileTopSlot()
       updateHero() // also calls refreshPlaybackUI(), which fills in
       // the dynamic half (track rows' Play/Pause label, aria-current)
       // of what applyModeRoles() just set the static half of
       updateAriaSelected()
+      updateScrollMasks()
 
       attachRowListeners()
     }
@@ -1594,54 +1676,48 @@ function folderYearLabel(folder: SerializedFolder) {
       cancelActiveTransition()
       const token = transitionToken
       transitionDirection = direction
-      const targetView: "albums" | "album" = direction === 1 ? "album" : "albums"
 
       if (prefersReducedMotion()) {
-        doSwap()
-        applyTopSlotVisibility(targetView)
+        doSwap() // rebuildForCurrentView() inside doSwap calls
+        // applyMobileTopSlot(), so mobile needs nothing further here
+        if (!isMobileMode()) {
+          const targetView: "albums" | "album" = direction === 1 ? "album" : "albums"
+          applyTopSlotVisibility(targetView)
+        }
         transitionPhase = "idle"
+        return
+      }
+
+      if (isMobileMode()) {
+        // No docked-header morph on mobile at all -- that's a
+        // desktop-only concept now (see applyMobileTopSlot(), always
+        // called from doSwap's rebuildForCurrentView()). Just a plain
+        // crossfade of the WHOLE scroll content (hero + top slot +
+        // rows together, via wheelGridEl -- they all change together
+        // now that they share one scroll container), never a View
+        // Transition.
+        transitionPhase = "pre-swap"
+        if (wheelGridEl) wheelGridEl.style.opacity = "0"
+        mobileFadeTimeoutId = window.setTimeout(() => {
+          if (token !== transitionToken) return
+          mobileFadeTimeoutId = null
+          transitionPhase = "morphing"
+          doSwap()
+          transitionPhase = "post-swap"
+          mobileFadeTimeoutId = window.setTimeout(() => {
+            if (token !== transitionToken) return
+            mobileFadeTimeoutId = null
+            if (wheelGridEl) wheelGridEl.style.opacity = "1"
+            transitionPhase = "idle"
+          }, 20)
+        }, MOBILE_FADE_MS)
         return
       }
 
       const supportsViewTransitions =
         typeof (document as unknown as { startViewTransition?: unknown })
           .startViewTransition === "function"
-
-      if (isMobileMode()) {
-        transitionPhase = "pre-swap"
-        wheelEl!.style.opacity = "0"
-        mobileFadeTimeoutId = window.setTimeout(() => {
-          if (token !== transitionToken) return
-          mobileFadeTimeoutId = null
-          transitionPhase = "morphing"
-          const finish = () => {
-            if (token !== transitionToken) return
-            transitionPhase = "post-swap"
-            mobileFadeTimeoutId = window.setTimeout(() => {
-              if (token !== transitionToken) return
-              mobileFadeTimeoutId = null
-              wheelEl!.style.opacity = "1"
-              transitionPhase = "idle"
-            }, 20)
-          }
-          if (supportsViewTransitions) {
-            startMorphTransition(
-              token,
-              () => {
-                doSwap()
-                applyTopSlotVisibility(targetView)
-              },
-              morph,
-              finish,
-            )
-          } else {
-            doSwap()
-            crossfadeTopSlot(targetView)
-            finish()
-          }
-        }, MOBILE_FADE_MS)
-        return
-      }
+      const targetView: "albums" | "album" = direction === 1 ? "album" : "albums"
 
       transitionPhase = "pre-swap"
       const startPos = wheelPosition
@@ -1704,8 +1780,8 @@ function folderYearLabel(folder: SerializedFolder) {
       // position (not a deep-link/popstate landing straight in an
       // album) -- restored exactly by rebuildForCurrentView() on the
       // way back out, rather than centering/scrolling anything.
-      if (isMobileMode() && view === "albums") {
-        savedAlbumsScrollTop = wheelEl!.scrollTop
+      if (isMobileMode() && view === "albums" && wheelGridEl) {
+        savedAlbumsScrollTop = wheelGridEl.scrollTop
       }
 
       playLevelSound("open")
@@ -1808,7 +1884,7 @@ function folderYearLabel(folder: SerializedFolder) {
         // DOM not yet swapped -- nothing was ever entered, so there's
         // nothing to undo beyond the in-flight visual.
         if (isMobileMode()) {
-          wheelEl!.style.opacity = "1"
+          if (wheelGridEl) wheelGridEl.style.opacity = "1"
           transitionPhase = "idle"
         } else {
           const restIndex = selectedIndex
@@ -1831,12 +1907,13 @@ function folderYearLabel(folder: SerializedFolder) {
       // sweeping in) -- both mean the album view is already fully
       // showing, so redirect straight into a real exit rather than
       // trying to reverse the row-morph mid-flight.
-      if (isMobileMode()) wheelEl!.style.opacity = "1"
+      if (isMobileMode() && wheelGridEl) wheelGridEl.style.opacity = "1"
       transitionPhase = "idle"
       performBackNavigation()
     }
 
     dockedHeaderEl?.addEventListener("click", requestBack)
+    mobileHeroBack?.addEventListener("click", requestBack)
 
     window.addEventListener("popstate", () => {
       const params = new URLSearchParams(location.search)
@@ -2004,15 +2081,22 @@ function folderYearLabel(folder: SerializedFolder) {
       applyModeRoles()
 
       if (isMobileMode()) {
-        // Desktop -> mobile: no cursor to carry over, just make sure
-        // whatever's actually playing (if part of the current list)
-        // is still visible.
+        // Desktop -> mobile: the folder-summary hero / per-track hero
+        // split depends on platform, and the docked header needs to
+        // give way to the merged mobile header -- both are otherwise
+        // only refreshed on a rebuild, which a bare resize never
+        // triggers.
+        applyMobileTopSlot()
+        updateHero()
+        // No cursor to carry over, just make sure whatever's actually
+        // playing (if part of the current list) is still visible.
         const idx = findActiveEntryIndex()
         if (idx !== -1) {
           requestAnimationFrame(() => {
             rowEls[idx]?.scrollIntoView({ block: "center", behavior: "auto" })
           })
         }
+        updateScrollMasks()
       } else {
         // Mobile -> desktop: list mode never maintained a cursor, so
         // re-derive one from whatever's playing (the track itself in
@@ -2040,7 +2124,8 @@ function folderYearLabel(folder: SerializedFolder) {
       resizeRafId = requestAnimationFrame(() => {
         resizeRafId = null
         recomputeGeometry()
-        if (!isMobileMode()) applyDesktopFrame()
+        if (isMobileMode()) updateScrollMasks()
+        else applyDesktopFrame()
       })
     })
 
@@ -2219,6 +2304,35 @@ function folderYearLabel(folder: SerializedFolder) {
     border-left: 2px solid currentColor;
     border-bottom: 2px solid currentColor;
     transform: rotate(45deg);
+  }
+  /* Mobile only (JS-hidden everywhere else, same pattern as the
+     mobile status icon elsewhere on this page): the merged header's
+     back control, standing in for the desktop-only docked header. */
+  .mobile-hero-back {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin-bottom: 8px;
+    padding: 0;
+    color: var(--ash);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .mobile-hero-back .ic-collapse {
+    width: 10px;
+    height: 10px;
+  }
+  .mobile-hero-back:hover {
+    color: var(--flare);
+  }
+  .mobile-hero-back:focus-visible {
+    outline: 2px solid var(--dusk);
+    outline-offset: 2px;
   }
   .hero-top {
     display: flex;
@@ -2695,14 +2809,20 @@ function folderYearLabel(folder: SerializedFolder) {
 
   @media (max-width: 780px) {
     .wheel-page {
-      padding: 16px;
+      /* Horizontal gutter now lives on .top-row and on each piece of
+         scrolled content individually (.left-col, .wheel-area) --
+         .wheel-grid (the scroll container) stays flush to the screen
+         edge instead of inheriting an inset here, which used to
+         double up with .wheel-area's own padding and narrow the list
+         more than intended. */
+      padding: 16px 0;
       /* Single named source of truth for "how much space at the
          bottom needs to stay clear of the status icon" -- derived
          from the icon's own size/offset rather than a second
-         hardcoded number kept in sync by hand. .wheel's own bottom
-         padding uses this directly; a future reserved now-playing
-         line above the icon extends this same property instead of
-         needing its own. */
+         hardcoded number kept in sync by hand. .wheel-grid's own
+         bottom padding uses this directly; a future reserved
+         now-playing line above the icon extends this same property
+         instead of needing its own. */
       --mobile-status-size: 44px;
       --mobile-status-offset: 16px;
       --mobile-reserved-bottom: calc(
@@ -2710,23 +2830,74 @@ function folderYearLabel(folder: SerializedFolder) {
           env(safe-area-inset-bottom) + 16px
       );
     }
+    .top-row {
+      padding: 0 16px; /* needs its own gutter now that .wheel-page's is gone */
+    }
+    /* Spotify-style: the header (hero or "Albums" label) and the row
+       list scroll together as one unit -- only .top-row above and the
+       status icon/now-playing line below (both position:fixed) stay
+       put. */
     .wheel-grid {
       display: flex;
       flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-anchor: none;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      transition: opacity 0.15s ease;
+      padding-bottom: var(--mobile-reserved-bottom, 96px);
+      /* Feather masks only show once there's actually somewhere to
+         scroll to/from -- not at rest. --top-fade/--bottom-fade
+         default to 0 (no fade) and are only pushed out to 56px by the
+         .show-*-fade classes, toggled by a scroll listener
+         (updateScrollMasks()) rather than restyling rows. */
+      --top-fade: 0px;
+      --bottom-fade: 0px;
+      mask-image: linear-gradient(
+        to bottom,
+        transparent,
+        black var(--top-fade),
+        black calc(100% - var(--bottom-fade)),
+        transparent
+      );
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        transparent,
+        black var(--top-fade),
+        black calc(100% - var(--bottom-fade)),
+        transparent
+      );
+    }
+    .wheel-grid.show-top-fade {
+      --top-fade: 56px;
+    }
+    .wheel-grid.show-bottom-fade {
+      --bottom-fade: 56px;
     }
     .left-col {
       flex: none;
-      margin-bottom: 12px;
+      padding: 0 16px; /* own gutter, matching .wheel-area's below */
+      margin-bottom: 24px; /* breathing room before the first row */
+    }
+    /* The merged header (album view) drops the card treatment
+       entirely -- "one header," not "one card." Albums view never
+       shows this at all (see updateHero()'s leftCol.hidden). */
+    .hero {
+      background: none;
+      border: none;
+      border-radius: 0;
+      padding: 0;
     }
     .hero-albums-view,
     .hero-album-view {
       display: flex;
-      align-items: center;
-      flex-wrap: wrap;
+      flex-direction: column;
       width: 100%;
     }
     .hero-meta {
-      margin-top: 0;
+      margin-top: 8px;
     }
     .hero-top {
       min-width: 0; /* lets .hero-title actually shrink to truncate below */
@@ -2737,9 +2908,6 @@ function folderYearLabel(folder: SerializedFolder) {
       text-overflow: ellipsis;
       min-width: 0;
     }
-    #albums-hero-play-btn {
-      display: none;
-    }
     #track-hero-play-btn {
       display: none;
     }
@@ -2747,42 +2915,35 @@ function folderYearLabel(folder: SerializedFolder) {
       display: none;
     }
     .wheel-area {
-      flex: 1;
-      min-height: 0;
-      /* Side gutter for everything in this column -- the top slot
-         (label/docked header) and the rows below both inherit it by
-         sitting inside this padded box, rather than each carrying
-         their own matching side padding independently. */
+      /* Cancels the unconditional (desktop) height:100% -- .wheel-area
+         is no longer its own fixed-height flex region here, just
+         normal content-sized flow within .wheel-grid's scroll content
+         (forcing it to 100% of the scroll viewport regardless of how
+         many rows there are would also throw off updateScrollMasks()'s
+         scrollHeight/clientHeight comparison). */
+      height: auto;
+      /* Own gutter, matching .left-col's -- .wheel-grid itself (the
+         actual scroll container) stays flush to the screen edge. */
       padding: 0 16px;
     }
+    /* Overrides the unconditional (desktop) 14px -- breathing room
+       before the first row in albums view, matching .left-col's own
+       margin-bottom for the album-view case above. */
+    .wheel-top-slot {
+      margin: 0 0 24px;
+    }
+    /* Cancels the unconditional (desktop) overflow:hidden/mask/flex
+       sizing -- #wheel is no longer its own clipped/masked/scroll-sized
+       region here; .wheel-grid (the actual scroll container) owns the
+       scrolling and the feather mask now, and #wheel just flows to its
+       natural content height within it. Without this, the desktop
+       rule's own top-only mask would double up with .wheel-grid's. */
     .wheel {
-      overflow-y: auto;
-      overflow-x: hidden;
-      overscroll-behavior: contain;
-      overflow-anchor: none;
-      -webkit-overflow-scrolling: touch;
-      transition: opacity 0.15s ease;
-      /* Plain freely-scrolling list, no snap -- starts at the very
-         top; bottom padding just needs to clear the status icon (and,
-         next pass, a reserved now-playing line above it). */
-      padding: 0 0 var(--mobile-reserved-bottom, 96px);
-      /* List mode: a fade at both scroll edges (not desktop's
-         top-only mask, and not tied to distance from the selection --
-         every row is otherwise fully opaque/readable). */
-      mask-image: linear-gradient(
-        to bottom,
-        transparent,
-        black 56px,
-        black calc(100% - 56px),
-        transparent
-      );
-      -webkit-mask-image: linear-gradient(
-        to bottom,
-        transparent,
-        black 56px,
-        black calc(100% - 56px),
-        transparent
-      );
+      flex: none;
+      min-height: auto;
+      overflow: visible;
+      mask-image: none;
+      -webkit-mask-image: none;
     }
     /* List mode: straight vertical stack, full width of the padded
        .wheel-area box, no arc -- no x-offset, no per-row scale, no
@@ -2798,9 +2959,6 @@ function folderYearLabel(folder: SerializedFolder) {
       left: auto;
       margin: 10px 0;
       width: 100%;
-    }
-    .docked-header {
-      margin: 0 0 14px;
     }
     .mobile-status-wrap {
       display: flex;
