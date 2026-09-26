@@ -29,6 +29,23 @@ const tracks = defineCollection({
 		trackNumber: z.number().int().positive(),
 		duration: z.string().optional(),
 		audioUrl: z.string().optional(),
+		// Hand overrides for the DDR concept page's groove radar. Every
+		// field is optional; anything left out is seeded from the slug
+		// (see src/lib/track-stats.ts). Preserved by scripts/sync-r2-music.mjs.
+		stats: z
+			.object({
+				stream: z.number().min(0).max(100),
+				voltage: z.number().min(0).max(100),
+				chaos: z.number().min(0).max(100),
+				air: z.number().min(0).max(100),
+				freeze: z.number().min(0).max(100),
+			})
+			.partial()
+			.optional(),
+		bpm: z.number().int().min(40).max(300).optional(),
+		feet: z.number().int().min(1).max(10).optional(),
+		// 16:9 jacket art URL; a generated placeholder is used when absent.
+		jacket: z.string().optional(),
 	}),
 })
 

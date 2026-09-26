@@ -1,0 +1,84 @@
+---
+// Difficulty meter: ten feet that light left-to-right. Lit state is
+// toggled from src/scripts/ddr/foot-meter.ts; the stagger is pure CSS.
+const feet = Array.from({ length: 10 }, (_, i) => i)
+---
+
+<div class="meter" id="ddr-feet">
+  <div class="head">
+    <span class="lbl">DIFFICULTY</span>
+    <span class="num" id="ddr-feet-num">0</span>
+  </div>
+  <div class="feet" aria-hidden="true">
+    {feet.map((i) => <span class="foot" style={`--i: ${i}`} />)}
+  </div>
+</div>
+
+<style>
+  .meter {
+    display: flex;
+    flex-direction: column;
+    gap: calc(4 * var(--u));
+    padding: calc(6 * var(--u)) calc(9 * var(--u));
+    border-radius: calc(8 * var(--u));
+    background: linear-gradient(180deg, var(--ddr-olive-5), #1b2107);
+    border: calc(2 * var(--u)) solid var(--ddr-olive-3);
+  }
+  .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: var(--font-ddr-title);
+    line-height: 1;
+  }
+  .lbl {
+    font-size: calc(9 * var(--u));
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: #b7c46a;
+  }
+  .num {
+    font-size: calc(16 * var(--u));
+    font-weight: 900;
+    color: var(--ddr-lime-hot);
+    font-variant-numeric: tabular-nums;
+  }
+  .feet {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: calc(3 * var(--u));
+  }
+  /* little stepping foot / arrow, like the arcade's difficulty feet */
+  .foot {
+    aspect-ratio: 3 / 4;
+    background: #3a4410;
+    clip-path: polygon(
+      20% 0,
+      80% 0,
+      100% 35%,
+      100% 70%,
+      50% 100%,
+      0 70%,
+      0 35%
+    );
+    transition:
+      background-color 0.12s ease,
+      filter 0.12s ease,
+      transform 0.12s ease;
+  }
+  .foot.is-lit {
+    background: var(--ddr-lime);
+    filter: drop-shadow(0 0 calc(3 * var(--u)) rgb(198 245 46 / 0.8));
+    transition-delay: calc(var(--i) * 28ms);
+  }
+  .foot.is-lit:nth-child(n + 8) {
+    background: #ff5a3b;
+    filter: drop-shadow(0 0 calc(3 * var(--u)) rgb(255 90 59 / 0.8));
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .foot,
+    .foot.is-lit {
+      transition: none;
+    }
+  }
+</style>

@@ -7,7 +7,7 @@
   transition:persist
   transition:name="player-bar"
 >
-  <audio id="player-audio" preload="none"></audio>
+  <audio id="player-audio" preload="none" crossorigin="anonymous"></audio>
 
   <div class="progress-border" id="progress-border" aria-hidden="true">
     <div class="progress-fill" id="progress-fill"></div>
@@ -193,6 +193,14 @@
 </div>
 
 <script>
+  import { getSharedAudioContext } from "../lib/audio-context"
+
+  declare global {
+    interface Window {
+      __playerAnalyser?: AnalyserNode
+    }
+  }
+
   // body isn't a transition:persist element -- Astro replaces it with a
   // fresh node (no classes) on every navigation, unlike #player-bar
   // itself, which really does survive. Re-sync body's padding to the
@@ -298,6 +306,86 @@
     let queue: QueueTrack[] = []
     let index = -1
     let isSeeking = false
+    // Whether the most recent loadTrack() asked to autoplay -- the CORS
+    // self-heal below reloads the source and must not start playback
+    // for a deep-linked (autoplay: false) track.
+    let lastAutoplay = false
+
+    // ---------- analyser graph (for visualizers) ----------
+    // The element is requested with crossorigin="anonymous" so a Web
+    // Audio AnalyserNode can read it. If the audio host doesn't send
+    // CORS headers, that request fails outright -- so on the first such
+    // error we drop the attribute and reload, and the site keeps
+    // playing exactly as before, just without an analyser. The graph is
+    // only ever built after a CORS load has actually succeeded: routing
+    // tainted media through a MediaElementSource outputs silence.
+    let corsBlocked = false
+    let analyser: AnalyserNode | null = null
+
+    function emitAnalyser() {
+      if (!analyser) return
+      document.dispatchEvent(
+        new CustomEvent("player:analyser", { detail: { analyser } }),
+      )
+    }
+
+    audio.addEventListener("error", () => {
+      if (corsBlocked || analyser || !audio.crossOrigin || !audio.src) return
+      corsBlocked = true
+      const src = audio.src
+      audio.removeAttribute("crossorigin")
+      audio.src = src
+      if (lastAutoplay) audio.play().catch(() => {})
+    })
+
+    async function ensureAnalyser() {
+      if (analyser || corsBlocked || !audio.crossOrigin) return
+      if (audio.dataset.graph === "1") return
+      const ctx = getSharedAudioContext()
+      if (!ctx) return
+      if (ctx.state !== "running") {
+        await ctx.resume().catch(() => {})
+      }
+      // A suspended context would silence the element the moment it's
+      // connected -- only take over its output once audio can flow.
+      if (ctx.state !== "running" || analyser) return
+      try {
+        const source = ctx.createMediaElementSource(audio)
+        const node = ctx.createAnalyser()
+        node.fftSize = 1024
+        node.smoothingTimeConstant = 0.6
+        source.connect(node)
+        node.connect(ctx.destination)
+        audio.dataset.graph = "1"
+        analyser = node
+        window.__playerAnalyser = node
+        emitAnalyser()
+      } catch {
+        // createMediaElementSource throws if this element was already
+        // claimed -- nothing to do, playback is unaffected.
+      }
+    }
+
+    audio.addEventListener("playing", () => {
+      const ctx = getSharedAudioContext()
+      if (ctx && ctx.state !== "running") ctx.resume().catch(() => {})
+      ensureAnalyser()
+    })
+
+    // Astro 7's router finishes every swap by rebuilding each <audio>/
+    // <video> in the incoming body (reifyMediaElements) -- including this
+    // persisted one, which silently stopped playback on every client-side
+    // navigation and left this closure driving a detached element. Put
+    // the live element back inside the same synchronous swap, before the
+    // browser's "removed from document -> pause" check gets to run.
+    document.addEventListener("astro:before-swap", ((event: Event & { swap: () => void }) => {
+      const originalSwap = event.swap
+      event.swap = () => {
+        originalSwap()
+        const fresh = document.getElementById("player-audio")
+        if (fresh && fresh !== audio) fresh.replaceWith(audio)
+      }
+    }) as EventListener)
 
     function fmt(seconds: number) {
       if (!Number.isFinite(seconds) || seconds < 0) return "0:00"
@@ -406,6 +494,7 @@
         if (track.albumId) drawerAlbum.href = `/albums/${track.albumId}/`
         else drawerAlbum.removeAttribute("href")
       }
+      lastAutoplay = autoplay
       audio.src = track.audioUrl
       if (autoplay) audio.play().catch(() => {})
       playBtn.disabled = false
@@ -590,7 +679,18 @@
 
     document.addEventListener("player:toggle", togglePlayback)
 
-    document.addEventListener("player:query", emitState)
+    document.addEventListener("player:query", () => {
+      emitState()
+      emitAnalyser()
+    })
+
+    // Explicit (non-toggling) pause/resume, for a consumer that needs
+    // to temporarily take over the speakers -- e.g. the concept page's
+    // hover previews pause the main track and resume it afterwards.
+    document.addEventListener("player:pause", () => audio.pause())
+    document.addEventListener("player:resume", () => {
+      if (audio.src) audio.play().catch(() => {})
+    })
 
     // Non-wrapping queue navigation and direct seeking for a consumer
     // that can't touch #player-audio itself (the concept page) --

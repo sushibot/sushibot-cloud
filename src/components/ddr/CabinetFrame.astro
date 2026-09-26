@@ -1,0 +1,138 @@
+---
+// The arcade "screen": a letterboxed 4:3 stage that scales to fit the
+// viewport (phones get a full-height single column instead). Every
+// DDR component sizes itself in design pixels via var(--u), which
+// resolves against this element's container width -- 960 design px
+// across on desktop, 420 on phones -- so the whole screen scales as
+// one picture, like the real cabinet.
+---
+
+<div class="cabinet" id="ddr-root">
+  <div class="screen">
+    <slot />
+    <div class="crt" aria-hidden="true"></div>
+  </div>
+</div>
+
+<style>
+  .cabinet {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: radial-gradient(
+      ellipse at 50% 40%,
+      #1c2408 0%,
+      #070902 60%,
+      #000 100%
+    );
+  }
+
+  .screen {
+    /* ---- palette (sampled from DDR EXTREME's Select Music) ---- */
+    --ddr-olive-1: #a8b83a;
+    --ddr-olive-2: #8a9a2a;
+    --ddr-olive-3: #6b7a1e;
+    --ddr-olive-4: #4e5a16;
+    --ddr-olive-5: #2c340b;
+    --ddr-ink: #1d2405;
+    --ddr-lime: #c6f52e;
+    --ddr-lime-hot: #e4ff5c;
+    --ddr-cream: #f4f1d8;
+    --ddr-plate: #f3efbf;
+    --ddr-blue: #2f6bff;
+    --ddr-magenta: #ff3fae;
+    --ddr-cyan: #4fe3ff;
+    --ddr-cat-0: #f4f1d8;
+    --ddr-cat-1: #ff4a36;
+    --ddr-cat-2: #dcbcff;
+    --ddr-cat-3: #ff5ad9;
+    --ddr-cat-4: #ffa12a;
+    --ddr-cat-5: #5ee8ff;
+
+    /* ---- type ---- */
+    --font-ddr-title: "Orbitron", "Chakra Petch", sans-serif;
+    --font-ddr-display: "Bungee", "Orbitron", sans-serif;
+    --font-ddr-outline: "Bungee Outline", "Bungee", sans-serif;
+    --font-ddr-label: "Chakra Petch", "Orbitron", sans-serif;
+    --font-ddr-wide: "Michroma", "Orbitron", sans-serif;
+
+    /* one design pixel; see the note at the top of this file */
+    --u: calc(100cqw / 960);
+
+    position: relative;
+    width: min(100vw, calc(100dvh * 4 / 3));
+    aspect-ratio: 4 / 3;
+    container-type: size;
+    overflow: hidden;
+    isolation: isolate;
+    color: var(--ddr-cream);
+    font-family: var(--font-ddr-label);
+    background:
+      /* faint diamond lattice, like the arcade backdrop */
+      repeating-linear-gradient(
+        45deg,
+        rgb(255 255 255 / 0.035) 0 1px,
+        transparent 1px 22px
+      ),
+      repeating-linear-gradient(
+        -45deg,
+        rgb(0 0 0 / 0.06) 0 1px,
+        transparent 1px 22px
+      ),
+      linear-gradient(
+        180deg,
+        var(--ddr-olive-2) 0%,
+        var(--ddr-olive-3) 60%,
+        #58661a 100%
+      );
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* CRT: scanlines + vignette, above everything, never interactive. */
+  .crt {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgb(0 0 0 / 0.16) 0 1px,
+      transparent 1px 3px
+    );
+    mix-blend-mode: multiply;
+  }
+  .crt::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse at 50% 50%,
+      transparent 58%,
+      rgb(0 0 0 / 0.42) 100%
+    );
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .crt {
+      animation: crt-drift 8s linear infinite;
+    }
+  }
+  @keyframes crt-drift {
+    to {
+      background-position: 0 30px;
+    }
+  }
+
+  @media (max-width: 780px) {
+    .screen {
+      --u: calc(100cqw / 420);
+      width: 100%;
+      height: 100dvh;
+      aspect-ratio: auto;
+    }
+  }
+</style>

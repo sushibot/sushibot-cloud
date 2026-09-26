@@ -229,6 +229,11 @@ async function writeYearContent(year, tracks) {
 			const preserved = {}
 			if (parsed.displayTitle) preserved.displayTitle = parsed.displayTitle
 			if (parsed.display === false) preserved.display = false
+			// Hand-tuned DDR concept fields -- never derivable from R2.
+			if (parsed.stats && typeof parsed.stats === "object") preserved.stats = parsed.stats
+			if (typeof parsed.bpm === "number") preserved.bpm = parsed.bpm
+			if (typeof parsed.feet === "number") preserved.feet = parsed.feet
+			if (parsed.jacket) preserved.jacket = parsed.jacket
 			if (Object.keys(preserved).length > 0) {
 				preservedBySlug.set(path.basename(f, ".json"), preserved)
 			}
@@ -248,6 +253,10 @@ async function writeYearContent(year, tracks) {
 					title: t.title,
 					...(preserved.displayTitle ? { displayTitle: preserved.displayTitle } : {}),
 					...(preserved.display === false ? { display: false } : {}),
+					...(preserved.stats ? { stats: preserved.stats } : {}),
+					...(typeof preserved.bpm === "number" ? { bpm: preserved.bpm } : {}),
+					...(typeof preserved.feet === "number" ? { feet: preserved.feet } : {}),
+					...(preserved.jacket ? { jacket: preserved.jacket } : {}),
 					album: String(year),
 					trackNumber: t.trackNumber,
 					...(t.duration ? { duration: t.duration } : {}),

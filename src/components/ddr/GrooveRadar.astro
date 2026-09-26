@@ -1,0 +1,116 @@
+---
+// Groove radar: STREAM (top), VOLTAGE (upper-left), CHAOS
+// (upper-right), AIR (lower-left), FREEZE (lower-right). The value
+// polygon's points are written by src/scripts/ddr/radar.ts; the grid
+// is static and computed here with the same geometry.
+import { RADAR_GEOMETRY, pentagonPoints } from "../../scripts/ddr/radar"
+
+const { cx, cy, r } = RADAR_GEOMETRY
+const rings = [0.25, 0.5, 0.75, 1].map((k) =>
+  pentagonPoints(
+    { stream: 100, voltage: 100, chaos: 100, air: 100, freeze: 100 },
+    r * k,
+  ),
+)
+const axes = [-90, -18, 54, 126, 198].map((deg) => {
+  const rad = (deg * Math.PI) / 180
+  return { x: cx + Math.cos(rad) * r, y: cy + Math.sin(rad) * r }
+})
+const labels = [
+  { jp: "全体密度", en: "STREAM", x: cx, y: 16, anchor: "middle" },
+  { jp: "最大密度", en: "VOLTAGE", x: 30, y: 84, anchor: "middle" },
+  { jp: "変則度", en: "CHAOS", x: 250, y: 84, anchor: "middle" },
+  { jp: "ジャンプ度", en: "AIR", x: 50, y: 206, anchor: "middle" },
+  { jp: "踏みっぱ度", en: "FREEZE", x: 230, y: 206, anchor: "middle" },
+]
+const initial = pentagonPoints(
+  { stream: 20, voltage: 20, chaos: 20, air: 20, freeze: 20 },
+  r,
+)
+---
+
+<div class="radar">
+  <svg viewBox="0 0 280 224" role="img" aria-labelledby="ddr-radar-desc">
+    <desc id="ddr-radar-desc">Groove radar</desc>
+    <g class="grid">
+      {
+        rings.map((points, i) => (
+          <polygon points={points} class={i === 3 ? "outer" : ""} />
+        ))
+      }
+      {axes.map((p) => <line x1={cx} y1={cy} x2={p.x} y2={p.y} />)}
+    </g>
+    <polygon class="value" id="ddr-radar-poly" points={initial}></polygon>
+    <g class="labels" aria-hidden="true">
+      {
+        labels.map((l) => (
+          <g transform={`translate(${l.x} ${l.y})`}>
+            <text class="jp" text-anchor={l.anchor} lang="ja">
+              {l.jp}
+            </text>
+            <text class="en" text-anchor={l.anchor} y="11">
+              {l.en}
+            </text>
+          </g>
+        ))
+      }
+    </g>
+  </svg>
+</div>
+
+<style>
+  .radar {
+    width: 100%;
+    height: 100%;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .grid polygon {
+    fill: none;
+    stroke: rgb(29 36 5 / 0.45);
+    stroke-width: 1;
+  }
+  .grid polygon.outer {
+    fill: rgb(29 36 5 / 0.28);
+    stroke: var(--ddr-ink);
+    stroke-width: 2;
+  }
+  .grid line {
+    stroke: rgb(29 36 5 / 0.45);
+    stroke-width: 1;
+  }
+  .value {
+    fill: var(--ddr-lime);
+    fill-opacity: 0.7;
+    stroke: var(--ddr-lime-hot);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 4px rgb(198 245 46 / 0.6));
+  }
+  .labels text {
+    paint-order: stroke fill;
+    stroke: var(--ddr-ink);
+    stroke-linejoin: round;
+  }
+  .jp {
+    font-family:
+      "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans JP", "Yu Gothic",
+      sans-serif;
+    font-weight: 800;
+    font-size: 15px;
+    fill: #fff;
+    stroke-width: 4px;
+  }
+  .en {
+    font-family: var(--font-ddr-title);
+    font-weight: 700;
+    font-size: 7.5px;
+    letter-spacing: 0.25em;
+    fill: var(--ddr-lime-hot);
+    stroke-width: 2.5px;
+  }
+</style>
