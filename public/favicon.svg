@@ -1,12 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#0B0E16" />
   <defs>
-    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="6" result="blur" />
-      <feMerge>
-        <feMergeNode in="blur" />
-        <feMergeNode in="SourceGraphic" />
-      </feMerge>
-    </filter>
+    <pattern id="stripe" width="20" height="20" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+      <rect width="20" height="20" fill="none" />
+      <rect width="10" height="20" fill="#E8C547" />
+    </pattern>
   </defs>
-  <circle cx="50" cy="50" r="30" fill="#f16a5b" filter="url(#glow)" />
+  <rect width="32" height="32" fill="url(#stripe)" />
 </svg>
