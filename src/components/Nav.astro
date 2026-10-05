@@ -1,61 +1,311 @@
 ---
+const path = Astro.url.pathname
+const archivesCurrent = path.startsWith("/albums")
 ---
 
-<nav class="nav">
-  <a class="brand" href="/">
-    <svg class="mark" viewBox="0 0 100 100" width="24" height="24" aria-hidden="true">
-      <defs>
-        <filter id="mark-glow" x="-60%" y="-60%" width="220%" height="220%">
-          <feGaussianBlur stdDeviation="6" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-      <circle cx="50" cy="50" r="30" fill="var(--dusk)" filter="url(#mark-glow)" />
-    </svg>
-		<!--<span class="wordmark" data-text="MUSIC LIBRARY">MUSIC LIBRARY</span> -->
-  </a>
-  <div class="nav-links">
-    <a href="/albums/">Albums</a>
+<header class="top">
+  <div class="top-in">
+    <a class="logo" href="/" aria-label="SushiCloud home">
+      <b>SushiCloud</b>
+      <span class="stripe" aria-hidden="true"></span>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="/albums/" aria-current={archivesCurrent ? "page" : undefined}>Archives</a>
+      <a href="/#about">About</a>
+    </nav>
+    <div class="data" aria-hidden="true">
+      <span class="idx">SC-2012/26</span>
+      <span class="bc" data-barcode="nav"></span>
+    </div>
   </div>
-</nav>
+</header>
 
 <style>
-  .nav {
+  /* ---- nav: full viewport width, sticky, same on every page ---- */
+  .top {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--void);
+  }
+  .top-in {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2px;
+    max-width: var(--maxw);
+    margin-inline: auto;
+    padding-inline: 12px;
+  }
+  .logo {
+    position: relative;
+    isolation: isolate;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
-    padding: 16px 28px;
-    border-bottom: 1px solid var(--line);
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
+    gap: 12px;
+    min-height: var(--logoh);
+    padding: 0 18px;
+    background: var(--void);
+    color: var(--bone);
+    text-decoration: none;
+    transition:
+      background-color 0.15s,
+      color 0.15s;
   }
-  .nav .brand {
+  .logo b {
+    font: 700 20px/1 var(--font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .stripe {
+    flex: none;
+    width: 18px;
+    height: 10px;
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--hazard) 0 10px,
+      transparent 10px 20px
+    );
+    opacity: 0.85;
+  }
+  .logo::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 26px;
+    opacity: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(circle, #0b0e16 1.3px, transparent 1.7px) 0 0 /
+      5px 5px;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000);
+    mask-image: linear-gradient(90deg, transparent, #000);
+    transition: opacity 0.15s;
+  }
+  .logo:is(:hover, :focus-visible, :active) {
+    background: var(--paper);
+    color: var(--paper-ink);
+  }
+  .logo:is(:hover, :focus-visible, :active) .stripe {
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--paper-ink) 0 10px,
+      transparent 10px 20px
+    );
+    opacity: 0.9;
+  }
+  .logo:is(:hover, :focus-visible, :active)::after {
+    opacity: 1;
+  }
+  .nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+  }
+  .nav a {
     display: flex;
     align-items: center;
-    gap: 10px;
+    justify-content: center;
+    min-height: 56px;
+    background: var(--scarlet);
+    color: var(--bone);
     text-decoration: none;
+    font: 600 13px/1 var(--font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    transition: background 0.2s;
   }
-  .nav .mark {
+  .nav a:hover {
+    background: var(--pop);
+  }
+  .nav a[aria-current] {
+    background: var(--scarlet-deep);
+  }
+  .data {
+    display: none;
+    background: var(--scarlet);
+    color: var(--bone);
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 10px 14px;
+    font: 400 12px/1.3 var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .data .bc {
+    height: 22px;
+    color: var(--bone);
+  }
+  .data :global(svg) {
+    width: 100%;
+    height: 100%;
     display: block;
   }
-  .nav .wordmark {
-    font-size: 1rem;
-    text-decoration: none;
+  @media (min-width: 900px) {
+    .top-in {
+      grid-template-columns: 208px 1fr minmax(180px, 0.6fr);
+    }
+    .nav {
+      grid-template-columns: 1fr 1fr;
+    }
+    .nav a {
+      min-height: 72px;
+    }
+    .logo {
+      min-height: 72px;
+    }
+    .data {
+      display: flex;
+    }
+    :root {
+      --navh: 73px;
+      --logoh: 72px;
+    }
   }
-  .nav-links {
+
+  /* nav: ink bar, quiet text links with a scarlet underline on the current
+     one, a short barcode tag at the far right -- overrides the block
+     above at equal specificity via source order, same as the POC */
+  .top {
+    border-bottom: 1px solid var(--line);
+  }
+  .top-in {
+    grid-template-columns: auto 1fr auto;
+    align-items: stretch;
+    gap: 0;
+    padding-inline: 0;
+  }
+  .logo {
+    padding: 0 18px 0 12px;
+  }
+  .nav {
     display: flex;
-    gap: 22px;
+    gap: 0;
+    align-items: stretch;
   }
-  .nav-links a {
-    text-decoration: none;
+  .nav a {
+    background: transparent;
+    min-height: 0;
+    padding: 0 22px;
+    position: relative;
     color: var(--ash);
-    transition: color 0.15s;
   }
-  .nav-links a:hover {
-    color: var(--flare);
+  .nav a:hover {
+    background: transparent;
+    color: var(--bone);
+  }
+  .nav a::after {
+    content: "";
+    position: absolute;
+    left: 22px;
+    right: 22px;
+    bottom: 0;
+    height: 3px;
+    background: var(--scarlet);
+    transform: scaleX(0);
+    transform-origin: 0 50%;
+    transition: transform 0.15s;
+  }
+  .nav a:hover::after,
+  .nav a[aria-current]::after {
+    transform: none;
+  }
+  .nav a[aria-current] {
+    background: transparent;
+    color: var(--bone);
+  }
+  .data {
+    background: transparent;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 0 12px 0 0;
+    color: var(--ash);
+  }
+  .data .bc {
+    width: 96px;
+    height: 20px;
+    color: var(--ash);
+  }
+  @media (max-width: 899px) {
+    .top-in {
+      grid-template-columns: 1fr;
+      padding-inline: 12px;
+      gap: 2px;
+    }
+    .nav {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+    }
+    .nav a {
+      min-height: 48px;
+      background: var(--scarlet);
+      color: var(--bone);
+    }
+    .nav a::after {
+      display: none;
+    }
+    .nav a[aria-current] {
+      background: var(--scarlet-deep);
+    }
   }
 </style>
+
+<script>
+  /* Seeded barcodes never change between loads. Runs on every client-side
+     navigation (astro:page-load), since .top isn't a transition:persist
+     element and is a fresh DOM node each time. */
+  function rng(s: string) {
+    let h = 2166136261
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i)
+      h = Math.imul(h, 16777619)
+    }
+    return function () {
+      h |= 0
+      h = (h + 0x6d2b79f5) | 0
+      let t = Math.imul(h ^ (h >>> 15), 1 | h)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+  }
+  function barcode(seed: string, len: number) {
+    const r = rng(seed)
+    let x = 0
+    let out = ""
+    while (x < len) {
+      const w = 1 + Math.floor(r() * 3)
+      if (r() > 0.35)
+        out += `<rect x="${x}" y="0" width="${w}" height="28" fill="currentColor"/>`
+      x += w + 1 + Math.floor(r() * 2)
+    }
+    return `<svg viewBox="0 0 ${len} 28" preserveAspectRatio="none" aria-hidden="true">${out}</svg>`
+  }
+  function initBarcodes() {
+    document.querySelectorAll("[data-barcode]").forEach((el) => {
+      const n = el.getAttribute("data-barcode")
+      if (n) el.innerHTML = barcode(n, 100)
+    })
+  }
+  document.addEventListener("astro:page-load", initBarcodes)
+</script>
+
+<script>
+  /* --navh follows the real height of the pinned nav (it is taller on
+     phones), so each screen below it can size itself to exactly one
+     viewport minus the nav. */
+  function initNavHeight() {
+    const top = document.querySelector(".top") as HTMLElement | null
+    if (!top) return
+    const root = document.documentElement
+    function set() {
+      root.style.setProperty("--navh", top!.offsetHeight + "px")
+    }
+    new ResizeObserver(set).observe(top)
+    set()
+  }
+  document.addEventListener("astro:page-load", initNavHeight)
+</script>

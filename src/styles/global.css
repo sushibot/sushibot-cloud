@@ -1,21 +1,38 @@
 :root {
-  --void: #0a0d0f;
-  --static: #15181b;
-  --static-2: #1d2124;
-  --line: #2a2f33;
-  --bone: #e7e6e2;
-  --ash: #8b9195;
-  --ash-dim: #5c6165;
-  --signal-dim: #3c8f89;
-  --signal-hot: #5cfbe8;
-  --split-hot: #ff2f6d;
-  --dusk: #f16a5b;
-  --flare: #ffb955;
+  --void: #0b0e16;
+  --static: #121723;
+  --static-2: #1a2132;
+  --line: rgba(239, 230, 204, 0.14);
+  --bone: #efe6cc;
+  --ash: #a9a491;
+  --ash-dim: color-mix(in srgb, var(--bone) 42%, transparent);
 
-  --font-display: "Chakra Petch", "Big Shoulders Display", sans-serif;
-  --font-hero: "Turret Road", var(--font-display);
-  --font-body: "IBM Plex Sans", -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --glow: #22d3ee;
+  --glow-soft: rgba(34, 211, 238, 0.34);
+  --pop: #e5472f;
+  --scarlet: #c0392f;
+  --scarlet-deep: #8e2a22;
+  --hazard: #e8c547;
+  --paper: #e4d9ba;
+  --paper-ink: #1a1710;
+
+  --era-2012: #d9a566;
+  --era-2015: #6e8f6b;
+  --era-2018: #2e5b8f;
+  --era-2021: #a9544b;
+  --era-2024: #c0392f;
+
+  --font-display: "Chakra Petch", sans-serif;
+  --font-body: "Barlow", -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* layout primitives shared across the sticky nav and every screen below
+     it -- not itemized in the token list but ported alongside it since the
+     POC declares them in the same :root block */
+  --maxw: 1200px;
+  --gut: max(12px, calc((100vw - var(--maxw)) / 2));
+  --navh: 114px;
+  --logoh: 64px;
 }
 
 *,
@@ -50,6 +67,7 @@ body {
   font-size: 16px;
   line-height: 1.6;
   position: relative;
+  overflow-x: hidden;
   transition: padding-bottom 0.2s ease;
 }
 /* Reserves space for the fixed PlayerBar (src/components/PlayerBar.astro)
@@ -59,18 +77,6 @@ body {
    every page navigation. */
 body.player-active {
   padding-bottom: 84px;
-}
-
-/* page-wide static grain — texture only, never animated */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 50;
-  opacity: 0.05;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 a {
@@ -85,90 +91,18 @@ h3 {
 }
 
 :focus-visible {
-  outline: 2px solid var(--flare);
+  outline: 2px solid var(--glow);
   outline-offset: 3px;
+  border-radius: 0;
 }
 
 ::selection {
-  background: var(--dusk);
-  color: var(--void);
-}
-
-/* ---------- wordmark glitch — hover/focus only, never ambient ---------- */
-.wordmark {
-  position: relative;
-  display: inline-block;
-  font-family: var(--font-display);
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  background: var(--scarlet);
   color: var(--bone);
-  cursor: default;
-}
-
-.wordmark::before,
-.wordmark::after {
-  content: attr(data-text);
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  mix-blend-mode: screen;
-}
-
-.wordmark::before {
-  color: var(--flare);
-}
-
-.wordmark::after {
-  color: var(--split-hot);
-}
-
-.wordmark:hover::before,
-.wordmark:focus::before {
-  opacity: 0.75;
-  animation: bleed-l 0.38s steps(2) infinite;
-}
-
-.wordmark:hover::after,
-.wordmark:focus::after {
-  opacity: 0.75;
-  animation: bleed-r 0.34s steps(2) infinite;
-}
-
-@keyframes bleed-l {
-  0% {
-    transform: translate(-2px, 0);
-  }
-  50% {
-    transform: translate(-3px, 1px);
-  }
-  100% {
-    transform: translate(-2px, 0);
-  }
-}
-
-@keyframes bleed-r {
-  0% {
-    transform: translate(2px, 0);
-  }
-  50% {
-    transform: translate(3px, -1px);
-  }
-  100% {
-    transform: translate(2px, 0);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wordmark:hover::before,
-  .wordmark:focus::before {
-    opacity: 0.6;
-    animation: none;
-    transform: translate(-2px, 0);
-  }
-  .wordmark:hover::after,
-  .wordmark:focus::after {
-    opacity: 0.6;
-    animation: none;
-    transform: translate(2px, 0);
+  * {
+    scroll-behavior: auto !important;
   }
 }
