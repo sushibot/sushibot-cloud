@@ -7,214 +7,857 @@ import Socials from "../components/Socials.astro"
 <Layout>
   <Nav />
 
-  <section class="hero">
-    <div class="hero-echo" aria-hidden="true">
-      <span>SUSHIBOt</span>
-      <span>SUSHIBOt</span>
-      <span>SUSHIBOt</span>
-    </div>
-    <div class="hero-image" aria-hidden="true"></div>
-    <div class="hero-inner">
-      <h1 class="wordmark" data-text="SUSHIBOt">SUSHIB<span class="accent">O</span>t</h1>
-      <p class="tagline">
-			Genres: Electronic, Big Room, Liquid DnB, Hardstyle, Techno, IDM, ???, no AI generated music slop.
-      </p>
-      <a class="cta" href="/albums/">[ Access the archive → ]</a>
-    </div>
-    <div class="divider" aria-hidden="true"></div>
-  </section>
+  <main id="top">
+    <h1 class="vh">SushiCloud, a personal music archive from 2012 to now</h1>
+    <section class="screen s1">
+      <div class="wrap">
+        <div class="hero" role="region" aria-label="SushiCloud home">
+          <div class="herofx" aria-hidden="true"></div>
+          <div class="side">
+            <div class="cell yr">
+              <strong>2026</strong>
+              <small>Archive<br />2012 &ndash; now</small>
+            </div>
+            <div class="cell code">
+              <small>Originals<br />Works in progress<br />Live visualizer</small>
+              <span class="chips" aria-hidden="true">
+                <i style="--c:var(--era-2012)"></i>
+                <i style="--c:var(--era-2015)"></i>
+                <i style="--c:var(--era-2018)"></i>
+                <i style="--c:var(--era-2021)"></i>
+                <i style="--c:var(--era-2024)"></i>
+              </span>
+            </div>
+            <div class="cell stamp">
+              <small>Index no.</small>
+              <span class="bc" data-barcode="stamp" aria-hidden="true"></span>
+              <span class="decal" aria-hidden="true">Archive</span>
+            </div>
+          </div>
+          <div class="cell main">
+            <div class="rails" aria-hidden="true">
+              <div class="st"></div>
+              <div class="ln"></div>
+              <div class="bc" data-barcode="hero"></div>
+            </div>
+            <p class="spec l" aria-hidden="true">Originals<br />Works in progress</p>
+            <p class="spec r" aria-hidden="true">Serie : 2012&ndash;26<br />Format : audio</p>
+            <p class="big a" aria-hidden="true">Sushi</p>
+            <img
+              class="char"
+              src="/character-outline.svg"
+              alt="Line drawing of the SushiCloud character"
+              width="965"
+              height="928"
+            />
+            <p class="big b" aria-hidden="true">Cloud</p>
+          </div>
+        </div>
+      </div>
 
-  <section class="about">
-    <div class="about-content">
-      <h2 class="about-title">ABOUT</h2>
-      <p class="bio">
-        Howzit bah. Glad you found me. I've been making music for over a
-        decade now, and this website holds almost my entire catalog of stuff
-        I've done over the years.<br> <br> I swing between a ton of different genres:
-        Electronic, Big Room, Liquid DnB, Hardstyle, Techno, IDM, etc. Some
-        of my biggest artist inspirations include: Deadmau5 (bro is
-        literally the reason why I started doing this in the first place),
-        Kill The Noise, Feed Me, Noisia, Skrillex, Fre4knc, ISOXO, and
-        Knock2, just to name a few. Aside from my music production, I'm also
-        a self taught pianist and I've been playing ever since I was 10
-        years old. <br> <br> Anyway, each album represents the year of all the music I
-        created, but did not post anywhere. You may find a bunch of
-        redundant songs or re-used themes everywhere. Thanks for visiting
-        and I hope you enjoy!
-      </p>
-    </div>
-  </section>
+      <section class="enter" aria-label="Enter the archive">
+        <div class="enter-in">
+          <div class="meta">
+            <div class="row1">
+              <span class="mono">Index no. SC-2012/26</span>
+              <span class="bc" data-barcode="enter" aria-hidden="true"></span>
+            </div>
+            <div class="chips" aria-hidden="true">
+              <i style="--c:var(--era-2012)"></i>
+              <i style="--c:var(--era-2015)"></i>
+              <i style="--c:var(--era-2018)"></i>
+              <i style="--c:var(--era-2021)"></i>
+              <i style="--c:var(--era-2024)"></i>
+            </div>
+            <span class="mono sub">Originals &middot; Works in progress &middot; 2012 &ndash; now</span>
+          </div>
+          <a class="cta" href="/albums/">
+            Enter the archive
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.4"
+              stroke-linecap="square"
+              aria-hidden="true"
+            >
+              <path d="M4 12h15M13 6l6 6-6 6" />
+            </svg>
+          </a>
+        </div>
+      </section>
+    </section>
 
-  <footer class="site-footer">
-    <Socials />
+    <section class="about screen" id="about" aria-labelledby="about-h">
+      <canvas id="viz" aria-hidden="true"></canvas>
+      <div class="about-in">
+        <div class="about-main" id="about-main">
+          <h2 id="about-h">About the maker</h2>
+          <div class="copy">
+            <p>
+              Howzit bah. Glad you found me. I've been making music for over
+              a decade now, and this website holds almost my entire catalog
+              of stuff I've done over the years.
+            </p>
+            <p>
+              I swing between a ton of different genres: Electronic, Big
+              Room, Liquid DnB, Hardstyle, Techno, IDM, etc. Some of my
+              biggest artist inspirations include: Deadmau5 (bro is
+              literally the reason why I started doing this in the first
+              place), Kill The Noise, Feed Me, Noisia, Skrillex, Fre4knc,
+              ISOXO, and Knock2, just to name a few. Aside from my music
+              production, I'm also a self taught pianist and I've been
+              playing ever since I was 10 years old.
+            </p>
+            <p>
+              Anyway, each album represents the year of all the music I
+              created, but did not post anywhere. You may find a bunch of
+              redundant songs or re-used themes everywhere. Thanks for
+              visiting and I hope you enjoy!
+            </p>
+          </div>
+        </div>
+        <div class="astats">
+          <div class="cell stat red">
+            <strong>10+</strong>
+            <small>Years making<br />music</small>
+          </div>
+          <div class="cell stat">
+            <strong>10</strong>
+            <small>Age I started<br />on piano</small>
+          </div>
+          <div class="cell stat pap">
+            <small>Index no.</small>
+            <strong>SC-2012/26</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="foot-in">
+      <div class="foot-id">
+        <b>SushiCloud</b>
+        <small>&copy; 2012&ndash;26 &middot; sushibot.cloud</small>
+      </div>
+      <Socials />
+    </div>
   </footer>
 </Layout>
 
 <style>
-  .hero {
-    position: relative;
-    padding: 96px 28px 72px;
+  .vh {
+    position: absolute;
+    width: 1px;
+    height: 1px;
     overflow: hidden;
-    background: var(--void);
-    min-height: 100vh;
+    clip: rect(0 0 0 0);
+  }
+  .cell {
+    position: relative;
+    min-width: 0;
     display: flex;
-    align-items: center;
   }
-  .hero-image {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    background-image: url("/album-art/sushibot.jpg");
-    background-repeat: no-repeat;
-    background-position: right center;
-    background-size: contain;
-    filter: grayscale(1) brightness(0.6) contrast(0.9);
-    opacity: 0.6;
-    -webkit-mask-image: linear-gradient(
-      to right,
-      transparent 0%,
-      transparent 48%,
-      black 90%
-    );
-    mask-image: linear-gradient(
-      to right,
-      transparent 0%,
-      transparent 48%,
-      black 90%
-    );
+
+  /* ---- hero ---- */
+  .screen {
+    min-height: calc(100svh - var(--navh));
+    display: flex;
+    flex-direction: column;
   }
-  @media (max-width: 640px) {
-    .hero-image {
-      display: none;
-    }
+  .s1 {
+    position: relative;
+    isolation: isolate;
+    overflow: clip;
+    background: linear-gradient(180deg, #0a0f1c, var(--void) 60%);
   }
-  /* repeated ghost wordmark — sits above the portrait so it reads across it, not hidden behind it */
-  .hero-echo {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
+  .wrap {
+    flex: 1;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: clamp(0.5rem, 3vw, 1.5rem);
+    width: 100%;
+    max-width: var(--maxw);
+    margin-inline: auto;
+    padding: 16px 12px 0;
+  }
+  .hero {
+    position: relative;
+    flex: 1 1 auto;
+    max-height: 760px;
+    display: grid;
+    gap: 2px;
+    grid-template-columns: 1fr;
+  }
+  /* the glow lives on the background layer behind the cell, so it fades
+     out past the cell edge instead of being cropped by it */
+  .herofx {
+    position: absolute;
+    z-index: -1;
+    left: 72%;
+    bottom: -10%;
+    width: 90%;
+    aspect-ratio: 1;
+    transform: translateX(-50%);
+    opacity: 0.7;
+    pointer-events: none;
+    background: radial-gradient(
+      closest-side,
+      var(--glow-soft),
+      rgba(34, 211, 238, 0.12) 55%,
+      transparent 80%
+    );
+    filter: blur(10px);
+  }
+  .main {
     overflow: hidden;
+    container-type: inline-size;
+    isolation: isolate;
+    min-height: calc((100vw - 24px) * 1.25);
+    display: block;
+  }
+  .spec {
+    position: absolute;
+    top: 14px;
+    font: 400 12px/1.5 var(--font-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--bone);
+    z-index: 3;
+    margin: 0;
+  }
+  .spec.l {
+    left: 16px;
+  }
+  .spec.r {
+    right: 16px;
+    text-align: right;
+  }
+  @media (max-width: 899px) {
+    .spec {
+      display: none;
+    }
+  }
+  .big {
+    position: absolute;
+    left: 3cqw;
+    margin: 0;
+    font: 700 22cqw/0.8 var(--font-display);
+    letter-spacing: -0.045em;
+    text-transform: uppercase;
     white-space: nowrap;
   }
-  .hero-echo span {
-    font-family: var(--font-hero);
-    font-weight: 800;
-    font-size: clamp(5rem, 19vw, 15rem);
-    line-height: 1;
-    color: transparent;
-    -webkit-text-stroke: 1px rgba(231, 230, 226, 0.08);
-    text-stroke: 1px rgba(231, 230, 226, 0.08);
-  }
-  .hero-inner {
-    position: relative;
+  .big.a {
+    top: 11%;
+    color: rgba(239, 230, 204, 0.9);
     z-index: 2;
+    text-shadow: 0 0 0.1em var(--glow-soft);
   }
-  .hero .wordmark {
-    font-family: var(--font-hero);
-    font-weight: 800;
-    font-size: clamp(4rem, 16vw, 13rem);
-    line-height: 0.9;
+  .big.b {
+    top: calc(11% + 19.5cqw);
+    color: var(--pop);
+    z-index: 2;
+    text-shadow: 0 0.03em 0 var(--void);
   }
-  .hero .wordmark .accent {
-    color: var(--dusk);
+  .rails {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
   }
-  .tagline {
-    margin-top: 16px;
-    max-width: 48ch;
+  .rails .st {
+    position: absolute;
+    left: 3cqw;
+    right: 3cqw;
+    top: 52%;
+    height: 8%;
+    background: repeating-linear-gradient(
+      115deg,
+      var(--bone) 0 7cqw,
+      transparent 7cqw 11cqw
+    );
+    opacity: 0.9;
+  }
+  .rails .ln {
+    position: absolute;
+    left: 3cqw;
+    right: 3cqw;
+    top: 63%;
+    height: 2px;
+    background: var(--bone);
+  }
+  .rails .bc {
+    position: absolute;
+    left: 3cqw;
+    right: 3cqw;
+    top: 67%;
+    height: 14%;
+    color: var(--bone);
+  }
+  .rails :global(svg) {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .char {
+    position: absolute;
+    right: -3%;
+    bottom: -4%;
+    height: 108%;
+    width: auto;
+    max-width: none;
+    z-index: 1;
+    filter: drop-shadow(0 0 8px var(--glow-soft));
+  }
+  .side {
+    display: none;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+  }
+  .side .cell {
+    min-height: 104px;
+    padding: 12px 14px;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .yr {
+    background: var(--era-2024);
+    color: var(--bone);
+  }
+  .yr strong {
+    font: 700 clamp(40px, 12vw, 56px) / 1 var(--font-display);
+    letter-spacing: 0.02em;
+  }
+  .yr small,
+  .code small,
+  .stamp small {
+    font: 400 12px/1.35 var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .code {
+    background: var(--void);
     color: var(--ash);
+  }
+  .chips {
+    display: flex;
+    gap: 4px;
+  }
+  .chips i {
+    flex: 1;
+    height: 28px;
+    background: var(--c);
+  }
+  .stamp {
+    background: var(--bone);
+    color: var(--void);
+    overflow: hidden;
+  }
+  .stamp .bc {
+    height: 30px;
+    color: var(--void);
+  }
+  .decal {
+    background: var(--hazard);
+    color: var(--void);
+    font: 700 12px/1 var(--font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 9px 16px 9px 12px;
+    clip-path: polygon(
+      0 0,
+      calc(100% - 9px) 0,
+      100% 9px,
+      100% 100%,
+      9px 100%,
+      0 calc(100% - 9px)
+    );
+  }
+  .stamp .decal {
+    position: absolute;
+    right: -8px;
+    bottom: 12px;
+    transform: rotate(-3deg);
+  }
+  @media (min-width: 900px) {
+    .hero {
+      grid-template-columns: 208px 1fr;
+    }
+    .side {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+    .stamp {
+      min-height: 132px;
+    }
+    .main {
+      min-height: 600px;
+    }
+    .big.a {
+      top: 15%;
+    }
+    .big.b {
+      top: auto;
+      bottom: 5%;
+    }
+    .rails .st {
+      top: 49%;
+    }
+    .rails .ln {
+      top: 60%;
+    }
+    .rails .bc {
+      top: 64%;
+      height: 16%;
+    }
+    .herofx {
+      left: calc(210px + (100% - 210px) * 0.72);
+      width: calc((100% - 210px) * 0.9);
+    }
+  }
+
+  /* ---- the divider: label strip with the one CTA button ---- */
+  .enter {
+    margin-top: 16px;
+    background: var(--paper);
+    color: var(--paper-ink);
+  }
+  .enter-in {
+    max-width: var(--maxw);
+    margin-inline: auto;
+    padding: 26px 12px;
+    display: grid;
+    gap: 18px;
+    align-items: center;
+  }
+  .enter .meta {
+    display: grid;
+    gap: 10px;
+  }
+  .enter .row1 {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .enter .mono {
+    font: 400 12px/1.5 var(--font-mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .enter .bc {
+    display: block;
+    width: 140px;
+    height: 26px;
+    color: var(--paper-ink);
+  }
+  .enter .chips {
+    display: flex;
+    gap: 4px;
+    max-width: 260px;
+  }
+  .enter .chips i {
+    flex: 1;
+    height: 14px;
+    background: var(--c);
+  }
+  .enter .sub {
+    opacity: 0.75;
   }
   .cta {
     display: inline-flex;
     align-items: center;
-    margin-top: 28px;
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    gap: 16px;
+    min-height: 64px;
+    padding: 0 24px;
+    background: var(--void);
     color: var(--bone);
     text-decoration: none;
-    border: 1px solid var(--line);
-    padding: 11px 18px;
-    transition:
-      color 0.15s,
-      border-color 0.15s;
+    font: 600 16px/1 var(--font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    transition: background 0.2s;
   }
   .cta:hover {
-    color: var(--flare);
-    border-color: var(--flare);
+    background: var(--scarlet);
+  }
+  .cta svg {
+    width: 18px;
+    height: 18px;
+    flex: none;
+  }
+  @media (max-width: 819px) {
+    .enter .bc,
+    .enter .sub {
+      display: none;
+    }
+  }
+  @media (min-width: 820px) {
+    .enter-in {
+      grid-template-columns: 1fr auto;
+      gap: 40px;
+    }
   }
 
-  /* angular cut between the hero and the about section — cyberpunk.net cue */
-  .divider {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 2;
-    height: 28px;
-    background: var(--static-2);
-    clip-path: polygon(0 100%, 100% 0%, 100% 100%);
-  }
-
-  .about {
-    position: relative;
-    overflow: hidden;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--line);
+  /* ---- footer: quiet, same ink bar and underline language as the nav ---- */
+  .foot {
     background: var(--void);
+    border-top: 1px solid var(--line);
   }
-  .about::before {
-    content: "";
-    position: absolute;
-    inset: -50%;
-    background-image: repeating-linear-gradient(
-      115deg,
-      rgba(241, 106, 91, 0.14) 0 2px,
-      transparent 2px 60px
-    );
-    animation: about-streak 2.6s linear infinite;
+  .foot-in {
+    max-width: var(--maxw);
+    margin-inline: auto;
+    padding: 0 12px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
   }
-  @keyframes about-streak {
-    from {
-      transform: translate(0, 0);
-    }
-    to {
-      transform: translate(120px, -120px);
-    }
+  .foot-id {
+    display: grid;
+    gap: 6px;
+    padding: 22px 0 18px;
   }
-  @media (prefers-reduced-motion: reduce) {
-    .about::before {
-      animation: none;
-    }
+  .foot-id b {
+    font: 700 16px/1 var(--font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
   }
-  .about-content {
-    position: relative;
-    z-index: 1;
-    max-width: 800px;
-    padding: 0 28px;
-  }
-  .about-title {
-    margin: 0;
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: clamp(1.6rem, 4vw, 2.2rem);
-    color: var(--bone);
-  }
-  .about-content .bio {
-    margin-top: 20px;
-    line-height: 1.7;
+  .foot-id small {
+    font: 400 12px/1.5 var(--font-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     color: var(--ash);
   }
+  @media (min-width: 900px) {
+    .foot-in {
+      grid-template-columns: auto 1fr;
+      align-items: stretch;
+      min-height: 88px;
+    }
+    .foot-id {
+      align-content: center;
+      padding: 0 40px 0 0;
+    }
+  }
 
-  .site-footer {
-    padding: 32px 28px;
-    background: var(--static);
+  /* ---- about: same background as the hero, outlined viz behind the copy ---- */
+  .about {
+    position: relative;
+    isolation: isolate;
+    overflow: clip;
+    background: linear-gradient(180deg, #0a0f1c, var(--void) 60%);
+  }
+  #viz {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none;
+    filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.34));
+  }
+  .about-in {
+    flex: 1;
+    width: 100%;
+    max-width: var(--maxw);
+    margin-inline: auto;
+    padding: 56px 12px 72px;
+    display: grid;
+    gap: 2px;
+    grid-template-columns: 1fr;
+    align-content: center;
+  }
+  .about-main {
+    position: relative;
+    padding: 8px 0 28px;
+    display: grid;
+    gap: 20px;
+    align-content: start;
+  }
+  .about-main::before {
+    content: "";
+    position: absolute;
+    inset: -20px -20px -8px -20px;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      rgba(10, 15, 28, 0.62),
+      rgba(10, 15, 28, 0.38) 55%,
+      transparent
+    );
+  }
+  .about h2 {
+    position: relative;
+    margin: 0;
+    font: 700 clamp(32px, 6vw, 52px) / 1 var(--font-display);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .about h2::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    left: -6%;
+    top: 50%;
+    width: min(112%, 720px);
+    height: 300%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    opacity: 0.75;
+    background: radial-gradient(
+      closest-side,
+      var(--glow-soft),
+      rgba(34, 211, 238, 0.12) 55%,
+      transparent 80%
+    );
+    filter: blur(10px);
+  }
+  .copy {
+    max-width: 62ch;
+    text-shadow:
+      0 0 14px rgba(10, 15, 28, 0.9),
+      0 0 3px rgba(10, 15, 28, 0.8);
+  }
+  .copy p {
+    margin: 0 0 1.1em;
+    font-size: 17px;
+    line-height: 1.65;
+  }
+  .copy p:last-child {
+    margin: 0;
+  }
+  .astats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+  }
+  .stat {
+    padding: 14px 16px;
+    min-height: 104px;
+    flex-direction: column;
+    justify-content: space-between;
+    background: var(--void);
+  }
+  .stat strong {
+    font: 700 clamp(34px, 9vw, 48px) / 1 var(--font-display);
+  }
+  .stat small {
+    font: 400 12px/1.35 var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ash);
+  }
+  .stat.red {
+    background: var(--scarlet);
+  }
+  .stat.red small {
+    color: var(--bone);
+  }
+  .stat.pap {
+    background: var(--paper);
+    color: var(--paper-ink);
+    grid-column: 1 / -1;
+  }
+  .stat.pap small {
+    color: var(--paper-ink);
+  }
+  .stat.pap strong {
+    font-size: 26px;
+    white-space: nowrap;
+  }
+  @media (min-width: 900px) {
+    .about-in {
+      grid-template-columns: 1fr 208px;
+      column-gap: 40px;
+    }
+    .astats {
+      grid-template-columns: 1fr;
+    }
+    .stat {
+      min-height: 0;
+    }
+    .stat.pap {
+      min-height: 132px;
+    }
+  }
+
+  /* ---- hero art: oversized "wash" that fills the right side of the
+     screen, fading in from the left behind the type (option D) ---- */
+  :root {
+    --gutR: calc(max(0px, (100vw - var(--maxw)) / 2) + 12px);
+  }
+  .enter {
+    position: relative;
+    z-index: 2;
+  }
+  .main {
+    overflow: visible;
+  }
+  .char {
+    right: calc(-1 * var(--gutR) - 4%);
+    height: 150%;
+    bottom: -34%;
+    opacity: 0.6;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 38%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 38%);
+  }
+  @media (min-width: 900px) {
+    .herofx {
+      left: calc(100% + var(--gutR) - 420px);
+      width: calc((100% - 210px) * 1.1);
+    }
   }
 </style>
+
+<script>
+  /* Outlined spectrum behind About (simulated, no audio on the home page).
+     Peak caps hold 650 ms then fall; the top 16% goes red. Runs only
+     while the section is on screen (IntersectionObserver);
+     prefers-reduced-motion renders one static frame instead. Re-runs on
+     every client-side navigation since #about isn't transition:persist
+     and is a fresh DOM node each time. */
+  function initSpectrum() {
+    const cv = document.getElementById("viz") as HTMLCanvasElement | null
+    const sec = document.getElementById("about")
+    if (!cv || !sec) return
+    const ctx = cv.getContext("2d")
+    if (!ctx) return
+
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches
+    let W = 0,
+      H = 0,
+      dpr = 1,
+      n = 0
+    const pitch = 30,
+      gap = 8,
+      HOLD = 0.65,
+      FALL = 2.4,
+      BPM = 118
+    let base = 0,
+      maxH = 0
+    let lvl: number[] = [],
+      peak: number[] = [],
+      hold: number[] = []
+
+    function layout() {
+      dpr = Math.min(devicePixelRatio || 1, 2)
+      const b = sec!.getBoundingClientRect()
+      W = b.width
+      H = b.height
+      cv!.width = Math.round(W * dpr)
+      cv!.height = Math.round(H * dpr)
+      n = Math.max(12, Math.round(W / pitch))
+      base = H
+      maxH = Math.max(120, (H - 48) * 0.55)
+      lvl = []
+      peak = []
+      hold = []
+      for (let i = 0; i < n; i++) {
+        lvl.push(0)
+        peak.push(0)
+        hold.push(0)
+      }
+    }
+
+    function target(i: number, t: number) {
+      const x = i / (n - 1)
+      const beat = (t * BPM) / 60
+      const ph = beat % 1
+      const kick = Math.pow(Math.max(0, 1 - ph * 2.2), 2.2)
+      const env = Math.pow(1 - x, 1.35) * 0.62 + 0.14
+      const wob =
+        0.5 +
+        0.5 * Math.sin(t * 1.7 + i * 0.9) * Math.sin(t * 0.63 + i * 0.37)
+      const snare =
+        (Math.floor(beat) % 2 === 1 ? Math.pow(Math.max(0, 1 - ph * 3), 2) : 0) *
+        (x > 0.25 && x < 0.8 ? 0.35 : 0)
+      const hat =
+        Math.pow(Math.max(0, 1 - ((beat * 2) % 1) * 3.5), 2) *
+        (x > 0.55 ? 0.28 : 0)
+      return Math.max(
+        0.04,
+        Math.min(1, env * (0.45 + 0.55 * wob) + kick * (1 - x) * 0.55 + snare + hat),
+      )
+    }
+
+    let last = 0
+    const t0 = performance.now()
+    let vis = true
+    let running = false
+
+    function draw(now: number) {
+      const dt = Math.min(0.05, (now - last) / 1000 || 0.016)
+      last = now
+      const t = (now - t0) / 1000
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0)
+      ctx!.clearRect(0, 0, W, H)
+      const bw = pitch - gap
+      for (let i = 0; i < n; i++) {
+        const tg = target(i, t)
+        lvl[i] =
+          tg > lvl[i]
+            ? lvl[i] + (tg - lvl[i]) * Math.min(1, dt * 18)
+            : Math.max(tg, lvl[i] - FALL * dt * 0.6)
+        if (lvl[i] >= peak[i]) {
+          peak[i] = lvl[i]
+          hold[i] = HOLD
+        } else if (hold[i] > 0) {
+          hold[i] -= dt
+        } else {
+          peak[i] = Math.max(lvl[i], peak[i] - FALL * dt)
+        }
+        const x = Math.round(i * pitch + (W - n * pitch + gap) / 2) + 0.5
+        const h = Math.round(lvl[i] * maxH)
+        const y = base - h
+        ctx!.strokeStyle = "rgba(239,230,204,.4)"
+        ctx!.lineWidth = 1.5
+        ctx!.beginPath()
+        ctx!.moveTo(x, base)
+        ctx!.lineTo(x, y)
+        ctx!.lineTo(x + bw, y)
+        ctx!.lineTo(x + bw, base)
+        ctx!.stroke()
+        ctx!.strokeStyle = "rgba(239,230,204,.09)"
+        ctx!.lineWidth = 1
+        ctx!.beginPath()
+        for (let yy = base - 9; yy > y; yy -= 9) {
+          ctx!.moveTo(x, Math.round(yy) + 0.5)
+          ctx!.lineTo(x + bw, Math.round(yy) + 0.5)
+        }
+        ctx!.stroke()
+        const py = base - Math.round(peak[i] * maxH)
+        ctx!.strokeStyle = peak[i] > 0.84 ? "#E5472F" : "rgba(239,230,204,.9)"
+        ctx!.lineWidth = 2
+        ctx!.beginPath()
+        ctx!.moveTo(x, py - 5.5)
+        ctx!.lineTo(x + bw, py - 5.5)
+        ctx!.stroke()
+      }
+      if (!reduce && vis) requestAnimationFrame(draw)
+      else running = false
+    }
+
+    function kick() {
+      if (!running && !reduce) {
+        running = true
+        requestAnimationFrame(draw)
+      }
+    }
+
+    new IntersectionObserver((entries) => {
+      vis = entries[0].isIntersecting
+      if (vis) kick()
+    }).observe(sec)
+    new ResizeObserver(() => layout()).observe(sec)
+    layout()
+    if (reduce) {
+      for (let k = 0; k < 40; k++) draw(performance.now() + k * 40)
+    } else {
+      kick()
+    }
+  }
+  document.addEventListener("astro:page-load", initSpectrum)
+</script>
