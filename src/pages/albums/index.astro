@@ -47,6 +47,7 @@ const rail = eraOrder
   <Nav />
 
   <section class="archives" aria-label="Archives">
+   <div class="col">
     <header class="phead">
       <h1>Archives</h1>
       <p class="count" id="count">{countText}</p>
@@ -151,6 +152,7 @@ const rail = eraOrder
         ))
       }
     </nav>
+   </div>
   </section>
 </Layout>
 
@@ -173,12 +175,26 @@ const rail = eraOrder
   }
 
   .archives {
-    position: relative;
     display: flex;
     flex-direction: column;
     height: calc(100svh - var(--navh));
     min-height: 0;
     background: var(--void);
+  }
+  /* the POC centers a 720px reading column inside its 1200px shell (the
+     shell's own max-width collapses to the same visual result as
+     centering 720px directly in the viewport, since both are symmetric)
+     -- phead/wheel/rail all live inside this column, not against the
+     section's full-bleed edges */
+  .col {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 720px;
+    margin-inline: auto;
+    min-height: 0;
+    flex: 1;
   }
 
   .phead {
