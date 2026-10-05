@@ -1,6 +1,21 @@
 ---
+import { getCollection } from "astro:content"
+
 const path = Astro.url.pathname
 const archivesCurrent = path.startsWith("/albums")
+
+// Decorative archive index label, e.g. "SC-2012/26" -- computed from the
+// albums collection's release years instead of the POC's hardcoded range,
+// since the real catalog's earliest year differs from the POC's sample
+// data. Falls back to "SC" alone if no album has a usable release year.
+const albums = await getCollection("albums")
+const years = albums
+  .map((a) => a.data.releaseDate?.getUTCFullYear())
+  .filter((y): y is number => typeof y === "number")
+const idxLabel =
+  years.length > 0
+    ? `SC-${Math.min(...years)}/${String(Math.max(...years)).slice(-2)}`
+    : "SC"
 ---
 
 <header class="top">
@@ -14,7 +29,7 @@ const archivesCurrent = path.startsWith("/albums")
       <a href="/#about">About</a>
     </nav>
     <div class="data" aria-hidden="true">
-      <span class="idx">SC-2012/26</span>
+      <span class="idx">{idxLabel}</span>
       <span class="bc" data-barcode="nav"></span>
     </div>
   </div>
