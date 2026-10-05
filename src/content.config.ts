@@ -29,6 +29,9 @@ const tracks = defineCollection({
 		trackNumber: z.number().int().positive(),
 		duration: z.string().optional(),
 		audioUrl: z.string().optional(),
+		bpm: z.number().optional(),
+		key: z.string().optional(),
+		genre: z.string().optional(),
 	}),
 })
 

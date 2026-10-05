@@ -2,21 +2,44 @@
 import Layout from "../layouts/Layout.astro"
 import Nav from "../components/Nav.astro"
 import Socials from "../components/Socials.astro"
+import { getCollection } from "astro:content"
+import { getYearRange, formatArchiveIndex } from "../lib/archive"
+
+const albums = await getCollection("albums")
+const yearRange = getYearRange(albums)
+const idxLabel = formatArchiveIndex(yearRange)
+const minYear = yearRange?.min
+const maxYear = yearRange?.max
+const maxYY = maxYear !== undefined ? String(maxYear).slice(-2) : undefined
+const buildYY = String(new Date().getUTCFullYear()).slice(-2)
+
+const archiveSpan = minYear !== undefined ? `${minYear} – now` : "—"
+const serieSpan =
+  minYear !== undefined && maxYY !== undefined
+    ? `${minYear}–${maxYY}`
+    : "—"
+// end year is the current build year, not the latest release -- the
+// copyright line covers "this site has existed since X", not "the
+// catalog's newest track is from Y"
+const copyrightSpan =
+  minYear !== undefined ? `${minYear}–${buildYY}` : new Date().getUTCFullYear()
 ---
 
 <Layout>
   <Nav />
 
   <main id="top">
-    <h1 class="vh">SushiCloud, a personal music archive from 2012 to now</h1>
+    <h1 class="vh">
+      SushiCloud, a personal music archive{minYear !== undefined ? ` from ${minYear} to now` : ""}
+    </h1>
     <section class="screen s1">
       <div class="wrap">
         <div class="hero" role="region" aria-label="SushiCloud home">
           <div class="herofx" aria-hidden="true"></div>
           <div class="side">
             <div class="cell yr">
-              <strong>2026</strong>
-              <small>Archive<br />2012 &ndash; now</small>
+              <strong>{maxYear ?? "—"}</strong>
+              <small>Archive<br />{archiveSpan}</small>
             </div>
             <div class="cell code">
               <small>Originals<br />Works in progress<br />Live visualizer</small>
@@ -41,7 +64,7 @@ import Socials from "../components/Socials.astro"
               <div class="bc" data-barcode="hero"></div>
             </div>
             <p class="spec l" aria-hidden="true">Originals<br />Works in progress</p>
-            <p class="spec r" aria-hidden="true">Serie : 2012&ndash;26<br />Format : audio</p>
+            <p class="spec r" aria-hidden="true">Serie : {serieSpan}<br />Format : audio</p>
             <p class="big a" aria-hidden="true">Sushi</p>
             <img
               class="char"
@@ -59,7 +82,7 @@ import Socials from "../components/Socials.astro"
         <div class="enter-in">
           <div class="meta">
             <div class="row1">
-              <span class="mono">Index no. SC-2012/26</span>
+              <span class="mono">Index no. {idxLabel}</span>
               <span class="bc" data-barcode="enter" aria-hidden="true"></span>
             </div>
             <div class="chips" aria-hidden="true">
@@ -69,7 +92,7 @@ import Socials from "../components/Socials.astro"
               <i style="--c:var(--era-2021)"></i>
               <i style="--c:var(--era-2024)"></i>
             </div>
-            <span class="mono sub">Originals &middot; Works in progress &middot; 2012 &ndash; now</span>
+            <span class="mono sub">Originals &middot; Works in progress &middot; {archiveSpan}</span>
           </div>
           <a class="cta" href="/albums/">
             Enter the archive
@@ -128,7 +151,7 @@ import Socials from "../components/Socials.astro"
           </div>
           <div class="cell stat pap">
             <small>Index no.</small>
-            <strong>SC-2012/26</strong>
+            <strong>{idxLabel}</strong>
           </div>
         </div>
       </div>
@@ -139,7 +162,7 @@ import Socials from "../components/Socials.astro"
     <div class="foot-in">
       <div class="foot-id">
         <b>SushiCloud</b>
-        <small>&copy; 2012&ndash;26 &middot; sushibot.cloud</small>
+        <small>&copy; {copyrightSpan} &middot; sushibot.cloud</small>
       </div>
       <Socials />
     </div>
@@ -859,5 +882,8 @@ import Socials from "../components/Socials.astro"
       kick()
     }
   }
-  document.addEventListener("astro:page-load", initSpectrum)
+  if (!(window as any).__spectrumWired) {
+    ;(window as any).__spectrumWired = true
+    document.addEventListener("astro:page-load", initSpectrum)
+  }
 </script>

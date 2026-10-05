@@ -3,136 +3,813 @@ import Layout from "../../layouts/Layout.astro"
 import Nav from "../../components/Nav.astro"
 import { getCollection } from "astro:content"
 import type { CollectionEntry } from "astro:content"
+import { eraOf } from "../../lib/archive"
 
-const albums = (await getCollection("albums")).sort((a, b) => {
-  const aReleaseDate = a.data.releaseDate?.valueOf() ?? 0
-  const bReleaseDate = b.data.releaseDate?.valueOf() ?? 0
+const albumEntries = await getCollection("albums")
+const allTracks = await getCollection("tracks", ({ data }) => data.display)
 
-  return bReleaseDate - aReleaseDate
-})
-
-const allTracks = await getCollection("tracks")
 const tracksByAlbum = new Map<string, CollectionEntry<"tracks">[]>()
 for (const track of allTracks) {
-  const albumId = track.data.album.id
-  const list = tracksByAlbum.get(albumId) ?? []
+  const list = tracksByAlbum.get(track.data.album.id) ?? []
   list.push(track)
-  tracksByAlbum.set(albumId, list)
+  tracksByAlbum.set(track.data.album.id, list)
 }
 
-function parseDuration(duration?: string) {
-  if (!duration) return 0
-  const [minutes, seconds] = duration.split(":").map(Number)
-  if (Number.isNaN(minutes) || Number.isNaN(seconds)) return 0
-  return minutes * 60 + seconds
-}
+const currentYear = new Date().getUTCFullYear()
 
-function formatTotal(totalSeconds: number) {
-  const totalMinutes = Math.round(totalSeconds / 60)
-  if (totalMinutes <= 0) return null
-  if (totalMinutes < 60) return `${totalMinutes} min`
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  return minutes > 0 ? `${hours} hr ${minutes} min` : `${hours} hr`
-}
+const rows = albumEntries
+  .map((album) => {
+    const tracks = (tracksByAlbum.get(album.id) ?? []).sort(
+      (a, b) => a.data.trackNumber - b.data.trackNumber,
+    )
+    // falls back to the current year if an album has no releaseDate (the
+    // field is optional in the schema) so era bucketing never crashes --
+    // flagged in the step report, not a value we're confident in
+    const year = album.data.releaseDate?.getUTCFullYear() ?? currentYear
+    const era = eraOf(year)
+    return { album, tracks, year, era }
+  })
+  .sort((a, b) => a.year - b.year)
 
-const albumRows = albums.map((album) => {
-  const tracks = tracksByAlbum.get(album.id) ?? []
-  const totalSeconds = tracks.reduce(
-    (sum, track) => sum + parseDuration(track.data.duration),
-    0,
-  )
-  const year = album.data.releaseDate
-    ? album.data.releaseDate.toLocaleDateString("en-US", {
-        timeZone: "UTC",
-        year: "numeric",
-      })
-    : null
+const totalTracks = rows.reduce((sum, r) => sum + r.tracks.length, 0)
+const countText = `${rows.length} album${rows.length === 1 ? "" : "s"} · ${totalTracks} track${totalTracks === 1 ? "" : "s"}`
 
-  const meta = [
-    "Album",
-    year,
-    tracks.length > 0
-      ? `${tracks.length} track${tracks.length === 1 ? "" : "s"}`
-      : null,
-    formatTotal(totalSeconds),
-  ]
-    .filter(Boolean)
-    .join(" • ")
-
-  return { album, meta }
-})
+// one rail button per era actually present in the catalog, in era order,
+// each jumping to that era's first (oldest) album row
+const eraOrder = ["--era-2012", "--era-2015", "--era-2018", "--era-2021", "--era-2024"]
+const rail = eraOrder
+  .map((token) => ({ token, index: rows.findIndex((r) => r.era.token === token) }))
+  .filter((e) => e.index !== -1)
+  .map((e) => ({ ...e, year: rows[e.index].year }))
 ---
 
 <Layout>
   <Nav />
 
-  <section class="albums-page">
-    <h1 class="page-title">Albums</h1>
-    {
-      albumRows.length > 0 ? (
-        <div class="album-list">
-          {albumRows.map(({ album, meta }) => (
-            <a class="album-row" href={`/albums/${album.id}/`}>
-              <div class="title">{album.data.title}</div>
-              <div class="meta">{meta}</div>
-            </a>
-          ))}
-        </div>
-      ) : (
-        <p class="empty">No albums found.</p>
-      )
-    }
+  <section class="archives" aria-label="Archives">
+    <header class="phead">
+      <h1>Archives</h1>
+      <p class="count" id="count">{countText}</p>
+    </header>
+
+    <div class="wheel" id="wAlbums">
+      <ol id="olAlbums" aria-label="Albums">
+        {
+          rows.map(({ album, tracks, year, era }, i) => {
+            const isSingle = tracks.length <= 1
+            const track = tracks[0]
+            const metaText = isSingle
+              ? "Single"
+              : `${tracks.length} track${tracks.length === 1 ? "" : "s"}`
+            const label = `${album.data.title}, ${year}, ${isSingle ? "single" : `${tracks.length} tracks`}`
+            const trackTitle = track
+              ? (track.data.displayTitle ?? track.data.title)
+              : undefined
+            const discStyle = `--c:${era.bg};--cf:${era.fg}`
+            return (
+              <li class="row" data-i={i} data-era={era.token}>
+                <div class="rowx">
+                  {isSingle ? (
+                    <button
+                      type="button"
+                      class="rowbtn"
+                      tabindex="-1"
+                      aria-label={label}
+                      data-audio-url={track?.data.audioUrl}
+                      data-track-title={trackTitle}
+                      data-album-title={album.data.title}
+                      data-album-id={album.id}
+                    >
+                      <span class="disc" style={discStyle}>
+                        <span class="yr">{year}</span>
+                        <span class="bc bars" data-barcode={album.id} aria-hidden="true" />
+                      </span>
+                      <span class="txt">
+                        <span class="name">{album.data.title}</span>
+                        <span class="meta">{metaText}</span>
+                      </span>
+                      <span class="eq" aria-hidden="true">
+                        <i /><i /><i /><i /><i />
+                      </span>
+                      <span class="tagf">
+                        <b>A{String(i + 1).padStart(2, "0")}</b>
+                        <span class="bc bars" data-barcode={`${album.id}-tag`} aria-hidden="true" />
+                      </span>
+                      <span class="cta cta-ico">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M7 4.5v15l13-7.5z" />
+                        </svg>
+                      </span>
+                      <span class="rprog" aria-hidden="true">
+                        <i />
+                      </span>
+                    </button>
+                  ) : (
+                    <a class="rowbtn" tabindex="-1" aria-label={label} href={`/albums/${album.id}/`}>
+                      <span class="disc" style={discStyle}>
+                        <span class="yr">{year}</span>
+                        <span class="bc bars" data-barcode={album.id} aria-hidden="true" />
+                      </span>
+                      <span class="txt">
+                        <span class="name">{album.data.title}</span>
+                        <span class="meta">{metaText}</span>
+                      </span>
+                      <span class="eq" aria-hidden="true">
+                        <i /><i /><i /><i /><i />
+                      </span>
+                      <span class="tagf">
+                        <b>A{String(i + 1).padStart(2, "0")}</b>
+                        <span class="bc bars" data-barcode={`${album.id}-tag`} aria-hidden="true" />
+                      </span>
+                      <span class="cta">Open</span>
+                      <span class="rprog" aria-hidden="true">
+                        <i />
+                      </span>
+                    </a>
+                  )}
+                </div>
+              </li>
+            )
+          })
+        }
+      </ol>
+    </div>
+
+    <nav class="rail" id="rail" aria-label="Jump to year">
+      {
+        rail.map((e) => (
+          <button
+            type="button"
+            data-index={e.index}
+            data-era={e.token}
+            style={`--c:var(${e.token})`}
+            aria-label={`Jump to ${e.year} onward`}
+            aria-current="false"
+          >
+            <span>&rsquo;{String(e.year).slice(-2)}</span>
+          </button>
+        ))
+      }
+    </nav>
   </section>
 </Layout>
 
 <style>
-  .albums-page {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 56px 28px 80px;
+  /* ---- Archives section: the album wheel, sized to the viewport below
+     the nav instead of the POC's fixed-height, no-page-scroll .frame/
+     .shell app shell -- that model assumes the whole document is one
+     self-contained SPA view, which doesn't fit a multi-page site with a
+     normally-scrolling home page sitting right next to this one. ---- */
+  :root {
+    --rowh: 88px;
+    --disc: 72px;
+    --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   }
-  .page-title {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: clamp(1.8rem, 4vw, 2.6rem);
+  @media (min-width: 980px) {
+    :root {
+      --rowh: 92px;
+      --disc: 76px;
+    }
   }
-  .empty {
-    margin-top: 20px;
+
+  .archives {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: calc(100svh - var(--navh));
+    min-height: 0;
+    background: var(--void);
+  }
+
+  .phead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 12px;
+    padding: 24px 16px 12px;
+  }
+  .phead h1 {
+    margin: 0;
+    font: 700 clamp(32px, 9vw, 44px) / 1.02 var(--font-display);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .count {
+    font: 400 12px/1.3 var(--font-mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     color: var(--ash);
+    margin: 0;
   }
-  .album-list {
-    margin-top: 28px;
-    border-top: 1px solid var(--line);
+
+  /* ---- the wheel ---- */
+  .wheel {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-snap-type: y mandatory;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 12%,
+      #000 88%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 12%,
+      #000 88%,
+      transparent 100%
+    );
   }
-  .album-row {
-    display: block;
-    padding: 18px 2px;
-    border-bottom: 1px solid var(--line);
+  .wheel::-webkit-scrollbar {
+    display: none;
+  }
+  .wheel ol {
+    list-style: none;
+    margin: 0;
+    padding: 0 52px 0 12px;
+  }
+  .row {
+    height: var(--rowh);
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+  }
+  .rowx {
+    height: 100%;
+    padding-block: 5px;
+    transform-origin: left center;
+    will-change: transform, opacity;
+  }
+  .rowbtn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    height: 100%;
+    padding: 0 16px 0 10px;
+    border: 0;
+    border-radius: 0;
+    text-align: left;
     text-decoration: none;
-    color: inherit;
-    transition: border-color 0.15s;
+    cursor: pointer;
+    box-shadow: none;
+    --cut: 12px;
+    background: rgba(239, 230, 204, 0.3);
+    color: var(--bone);
+    clip-path: polygon(
+      var(--cut) 0,
+      100% 0,
+      100% calc(100% - var(--cut)),
+      calc(100% - var(--cut)) 100%,
+      0 100%,
+      0 var(--cut)
+    );
+    transition:
+      background-color 0.25s,
+      box-shadow 0.25s;
   }
-  .album-row:hover {
-    border-color: var(--dusk);
+  .rowbtn::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    background: var(--static);
+    clip-path: polygon(
+      calc(var(--cut) - 0.4px) 0,
+      100% 0,
+      100% calc(100% - var(--cut) + 0.4px),
+      calc(100% - var(--cut) + 0.4px) 100%,
+      0 100%,
+      0 calc(var(--cut) - 0.4px)
+    );
   }
-  .album-row .title {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1.2rem;
-    transition: color 0.15s;
+  .rowbtn::after {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    pointer-events: none;
+    mix-blend-mode: screen;
+    opacity: 0.34;
+    background:
+      radial-gradient(60% 120% at 12% 20%, rgba(239, 230, 204, 0.16), transparent 70%),
+      radial-gradient(50% 100% at 88% 90%, rgba(239, 230, 204, 0.12), transparent 70%),
+      radial-gradient(
+          circle at 30% 70%,
+          rgba(239, 230, 204, 0.55) 0 0.6px,
+          transparent 1px
+        )
+        0 0 / 37px 29px,
+      radial-gradient(
+          circle at 70% 30%,
+          rgba(239, 230, 204, 0.45) 0 0.5px,
+          transparent 1px
+        )
+        0 0 / 53px 41px,
+      var(--grain);
   }
-  .album-row:hover .title {
-    color: var(--dusk);
+  .rowbtn > * {
+    position: relative;
+    z-index: 1;
   }
-  .album-row .meta {
-    margin-top: 4px;
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
+  .rowx:has(.rowbtn:focus-visible) {
+    outline: 2px solid var(--glow);
+    outline-offset: -2px;
+  }
+  .rowbtn:focus-visible {
+    outline: none;
+    background: var(--hazard);
+  }
+  .row.is-focus .rowx {
+    filter: drop-shadow(0 0 14px var(--glow-soft));
+  }
+
+  .disc {
+    position: relative;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: var(--disc);
+    height: var(--disc);
+    border-radius: 0;
+    background: var(--c);
+    color: var(--cf);
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.18);
+  }
+  .disc .yr {
+    font: 700 16px/1 var(--font-display);
+  }
+  .disc .bars {
+    display: none;
+  }
+  .txt {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+  }
+  .name {
+    font: 600 19px/1.15 var(--font-display);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+  .meta {
+    font: 400 12px/1.2 var(--font-mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     color: var(--ash);
-    transition: color 0.15s;
   }
-  .album-row:hover .meta {
-    color: var(--flare);
+  .cta {
+    display: none;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 0;
+    border: 1px solid rgba(239, 230, 204, 0.45);
+    color: var(--bone);
+    font: 600 14px var(--font-display);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .row.is-focus .cta {
+    display: inline-flex;
+  }
+  .cta-ico {
+    min-width: 56px;
+    padding: 0 14px;
+  }
+  .cta-ico svg {
+    display: block;
+    width: 22px;
+    height: 22px;
+    fill: currentColor;
+  }
+  @media (max-width: 639px) {
+    .cta {
+      min-width: 56px;
+      padding: 0 8px;
+    }
+  }
+
+  .tagf {
+    display: none;
+    flex: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 5px;
+    font: 500 12px/1 var(--font-mono);
+    letter-spacing: 0.1em;
+    color: var(--ash);
+  }
+  .tagf b {
+    font-weight: 500;
+  }
+  .tagf .bars {
+    width: 36px;
+    height: 10px;
+    opacity: 0.7;
+  }
+  .row.is-focus .tagf {
+    display: none !important;
+  }
+  @media (min-width: 640px) {
+    .tagf {
+      display: flex;
+    }
+  }
+
+  /* ---- focused row: cream strip, square-cut taper ---- */
+  .row.is-focus .rowbtn {
+    background: var(--paper);
+    color: var(--paper-ink);
+    padding-right: 48px;
+    -webkit-mask-image:
+      linear-gradient(90deg, #000 91%, transparent),
+      radial-gradient(#000 40%, transparent 41%);
+    mask-image:
+      linear-gradient(90deg, #000 91%, transparent),
+      radial-gradient(#000 40%, transparent 41%);
+    -webkit-mask-size: 100% 100%, 6px 6px;
+    mask-size: 100% 100%, 6px 6px;
+  }
+  .row.is-focus .rowbtn::before {
+    display: none;
+  }
+  .row.is-focus .rowbtn::after {
+    inset: 0;
+    mix-blend-mode: multiply;
+    opacity: 0.55;
+    background:
+      radial-gradient(60% 140% at 8% 30%, rgba(26, 23, 16, 0.22), transparent 70%),
+      radial-gradient(45% 120% at 62% 100%, rgba(26, 23, 16, 0.16), transparent 70%),
+      radial-gradient(
+          circle at 30% 70%,
+          rgba(26, 23, 16, 0.5) 0 0.7px,
+          transparent 1.2px
+        )
+        0 0 / 43px 31px,
+      radial-gradient(
+          circle at 70% 30%,
+          rgba(26, 23, 16, 0.4) 0 0.6px,
+          transparent 1.1px
+        )
+        12px 7px / 67px 53px,
+      var(--grain);
+  }
+  .row.is-focus .rowbtn .meta {
+    color: rgba(26, 23, 16, 0.72);
+  }
+  .row.is-focus .rowbtn .cta {
+    border-color: var(--paper-ink);
+    color: var(--paper-ink);
+  }
+  .row.is-focus .rowbtn .disc {
+    box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.28);
+  }
+  .row.is-focus .rowbtn:focus-visible {
+    background: var(--hazard);
+  }
+  @media (max-width: 639px) {
+    .row.is-focus .rowbtn {
+      padding-right: 34px;
+    }
+  }
+
+  /* ---- playing indicator: peak-hold meter + progress line. The meter
+     bars render statically (--n/--k default to 1) until PlayerBar's
+     real-time level data is wired in a later step -- see the step
+     report. ---- */
+  .eq {
+    display: none;
+    flex: none;
+    align-items: flex-end;
+    gap: 3px;
+    height: 30px;
+    margin-left: auto;
+  }
+  .row.is-current .eq {
+    display: flex;
+  }
+  .row.is-current .tagf {
+    display: none !important;
+  }
+  .eq i {
+    position: relative;
+    display: block;
+    width: 5px;
+    height: 30px;
+  }
+  .eq i::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(to top, var(--glow) 0 4px, transparent 4px 6px);
+    clip-path: inset(calc(30px - var(--n, 1) * 6px) 0 0 0);
+  }
+  .eq i::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 4px;
+    bottom: calc((var(--k, 1) - 1) * 6px + 2px);
+    background: var(--bone);
+  }
+  .row.is-focus .eq i::after {
+    background: var(--paper-ink);
+  }
+  @media (max-width: 639px) {
+    .row.is-focus .eq {
+      display: none;
+    }
+  }
+  .rowbtn > .rprog {
+    display: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 5px;
+    z-index: 2;
+    background: rgba(239, 230, 204, 0.16);
+  }
+  .row.is-current .rowbtn > .rprog {
+    display: block;
+  }
+  .rprog i {
+    display: block;
+    height: 100%;
+    width: var(--prog, 0%);
+    background: var(--pop);
+  }
+  .row.is-focus .rowbtn > .rprog {
+    background: rgba(26, 23, 16, 0.18);
+  }
+
+  .disc::after {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    border: 1.5px dashed rgba(239, 230, 204, 0.26);
+    display: none;
+  }
+  .row.is-current .disc::after {
+    display: block;
+    border-style: solid;
+    border-color: var(--bone);
+  }
+  :global(body.playing) .row.is-current .disc::after {
+    border-color: var(--pop);
+  }
+
+  /* ---- rail: jump to era ---- */
+  .rail {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+  }
+  .rail button {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 8px;
+    gap: 6px;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    font: 500 12px var(--font-mono);
+    color: var(--ash);
+  }
+  .rail button::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 0;
+    background: var(--c);
+  }
+  .rail button[aria-current="true"] {
+    color: var(--bone);
+  }
+  .rail button[aria-current="true"]::before {
+    box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.35);
+  }
+  .rail span {
+    order: -1;
   }
 </style>
+
+<script>
+  /* The album wheel: scroll-snap + per-row scale/opacity as rows pass
+     the focus point (ported from the POC's createWheel), plus jump-to-era
+     rail buttons and the single-track-plays / multi-track-navigates
+     split described in the step instructions. */
+  function initAlbumsWheel() {
+    const ol = document.getElementById("olAlbums")
+    const scroller = document.getElementById("wAlbums") as HTMLElement | null
+    const rail = document.getElementById("rail")
+    if (!ol || !scroller || !rail) return
+
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches
+    const fine = matchMedia("(hover:hover) and (pointer:fine)").matches
+    const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+
+    const rows = Array.from(ol.children) as HTMLElement[]
+    let focus = -1
+    let prev: [number, number] = [0, -1]
+
+    const rowH = () => (rows[0] ? rows[0].offsetHeight : 96)
+
+    function style(li: HTMLElement, d: number) {
+      const a = Math.min(Math.abs(d), 3.2)
+      const x = li.firstElementChild as HTMLElement | null
+      if (!x) return
+      const shift = reduce ? 0 : a * a * 6.5
+      const rot = reduce ? 0 : -clamp(d / 3, -1, 1) * 7
+      x.style.transform = `translate3d(${shift.toFixed(1)}px,0,0) rotate(${rot.toFixed(2)}deg) scale(${(1 - 0.075 * a).toFixed(3)})`
+      x.style.opacity = Math.max(0.3, 1 - 0.24 * a).toFixed(2)
+    }
+
+    function layout() {
+      const r = rowH()
+      const h = scroller!.clientHeight
+      ol!.style.paddingTop = Math.max(0, h * 0.5 - r / 2) + "px"
+      ol!.style.paddingBottom = Math.max(0, h * 0.5 - r / 2) + "px"
+    }
+
+    function update() {
+      if (!rows.length) return
+      const f = scroller!.scrollTop / rowH()
+      const lo = Math.max(0, Math.floor(f) - 5)
+      const hi = Math.min(rows.length - 1, Math.ceil(f) + 5)
+      for (let i = Math.min(prev[0], lo); i <= Math.max(prev[1], hi); i++) {
+        if (rows[i]) style(rows[i], i - f)
+      }
+      prev = [lo, hi]
+      const nf = clamp(Math.round(f), 0, rows.length - 1)
+      if (nf !== focus) {
+        if (rows[focus]) {
+          rows[focus].classList.remove("is-focus")
+          const btn = rows[focus].querySelector(".rowbtn") as HTMLElement | null
+          if (btn) btn.tabIndex = -1
+        }
+        focus = nf
+        rows[nf].classList.add("is-focus")
+        const btn = rows[nf].querySelector(".rowbtn") as HTMLElement | null
+        if (btn) btn.tabIndex = 0
+        const era = rows[nf].dataset.era
+        rail!.querySelectorAll("button").forEach((b) => {
+          b.setAttribute("aria-current", String((b as HTMLElement).dataset.era === era))
+        })
+      }
+    }
+
+    let ticking = false
+    scroller.addEventListener(
+      "scroll",
+      () => {
+        if (!ticking) {
+          ticking = true
+          requestAnimationFrame(() => {
+            ticking = false
+            update()
+          })
+        }
+      },
+      { passive: true },
+    )
+
+    function goTo(i: number, smooth = true, focusBtn = false) {
+      i = clamp(i, 0, rows.length - 1)
+      if (!rows[i]) return
+      scroller!.scrollTo({ top: i * rowH(), behavior: smooth && !reduce ? "smooth" : "auto" })
+      if (focusBtn) {
+        const btn = rows[i].querySelector(".rowbtn") as HTMLElement | null
+        btn?.focus({ preventScroll: true })
+      }
+    }
+
+    let activeAudioUrl: string | null = null
+
+    function playRow(li: HTMLElement) {
+      const btn = li.querySelector(".rowbtn") as HTMLElement | null
+      const audioUrl = btn?.dataset.audioUrl
+      if (!btn || !audioUrl) return
+      if (audioUrl === activeAudioUrl) {
+        document.dispatchEvent(new CustomEvent("player:toggle"))
+        return
+      }
+      document.dispatchEvent(
+        new CustomEvent("player:play", {
+          detail: {
+            queue: [
+              {
+                title: btn.dataset.trackTitle,
+                album: btn.dataset.albumTitle,
+                albumId: btn.dataset.albumId,
+                audioUrl,
+              },
+            ],
+            index: 0,
+          },
+        }),
+      )
+    }
+
+    ol.addEventListener("click", (e) => {
+      const li = (e.target as HTMLElement).closest(".row") as HTMLElement | null
+      if (!li) return
+      const i = Number(li.dataset.i)
+      const isActivate = i === focus || fine
+      if (!isActivate) {
+        e.preventDefault()
+        goTo(i, true, true)
+        return
+      }
+      const btn = li.querySelector(".rowbtn") as HTMLElement | null
+      if (btn?.tagName === "A") return // multi-track row: let the browser navigate
+      e.preventDefault()
+      if (i !== focus) goTo(i)
+      playRow(li)
+    })
+
+    ol.addEventListener("keydown", (e) => {
+      const k = { ArrowDown: 1, ArrowUp: -1, PageDown: 5, PageUp: -5 }[e.key]
+      if (k) {
+        e.preventDefault()
+        goTo(focus + k, true, true)
+      } else if (e.key === "Home") {
+        e.preventDefault()
+        goTo(0, true, true)
+      } else if (e.key === "End") {
+        e.preventDefault()
+        goTo(rows.length - 1, true, true)
+      }
+    })
+
+    rail.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null
+      if (!b) return
+      goTo(Number(b.dataset.index), true, true)
+    })
+
+    new ResizeObserver(() => {
+      layout()
+      update()
+    }).observe(scroller)
+
+    function markCurrent() {
+      rows.forEach((li) => {
+        const btn = li.querySelector(".rowbtn") as HTMLElement | null
+        const isCurrent = !!btn?.dataset.audioUrl && btn.dataset.audioUrl === activeAudioUrl
+        li.classList.toggle("is-current", isCurrent)
+      })
+    }
+
+    document.addEventListener("player:state", ((event: CustomEvent) => {
+      const detail = event.detail ?? {}
+      activeAudioUrl = detail.audioUrl ?? null
+      markCurrent()
+    }) as EventListener)
+    document.dispatchEvent(new CustomEvent("player:query"))
+
+    layout()
+    scroller.scrollTop = 0
+    update()
+    // default focus: the most recent album, not the oldest
+    goTo(rows.length - 1, false)
+  }
+
+  // Not transition:persist -- re-runs fresh on every visit to this page,
+  // but the outer astro:page-load registration is guarded once so repeat
+  // visits don't pile up listeners on the persistent `document`.
+  if (!(window as any).__albumsWheelWired) {
+    ;(window as any).__albumsWheelWired = true
+    document.addEventListener("astro:page-load", initAlbumsWheel)
+  }
+</script>
