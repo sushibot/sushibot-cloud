@@ -427,7 +427,7 @@
       } catch {}
     }
 
-    function loadTrack(newIndex: number) {
+    function loadTrack(newIndex: number, autoplay = true) {
       const track = queue[newIndex]
       if (!track) return
       index = newIndex
@@ -456,8 +456,10 @@
       }
       prepareAnalyser(track.audioUrl)
       audio.src = track.audioUrl
-      resumeAudioContextIfNeeded()
-      audio.play().catch(() => {})
+      if (autoplay) {
+        resumeAudioContextIfNeeded()
+        audio.play().catch(() => {})
+      }
       playBtn.disabled = false
       seek.disabled = false
       if (drawerPlayBtn) drawerPlayBtn.disabled = false
@@ -600,7 +602,7 @@
       const detail = event.detail
       if (!detail || !Array.isArray(detail.queue)) return
       queue = detail.queue
-      loadTrack(detail.index ?? 0)
+      loadTrack(detail.index ?? 0, detail.autoplay ?? true)
     }) as EventListener)
 
     document.addEventListener("player:toggle", togglePlayback)
