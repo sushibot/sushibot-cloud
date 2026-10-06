@@ -6,7 +6,44 @@ the HTML wins.
 
 ## Step 9 — track wheel rebuild + desktop stage port + POC-deviation fixes
 
-**Status: pending independent review.**
+**Status: reviewed — APPROVE WITH NOTES, both notes fixed. Awaiting
+user's phone/desktop test before step 10.**
+
+### Independent review (fresh subagent, second attempt — first attempt
+failed on a rate limit before reviewing anything)
+Verdict: **APPROVE WITH NOTES**. Reviewer independently verified (not
+just trusted) the POC-comparison numbers, the track-numbering causes
+against git history/file contents, the shared-wheel claim, and the
+clipping-audit false-positive reasoning — all confirmed correct. Found
+two issues, both fixed below:
+- **Real bug** (not previously flagged): the queue-JSON build threaded
+  `i` (a track's position in the *full* track list) onto each playable
+  row's `data-index`, but `queue` itself is the list compacted down to
+  only audio-having tracks. If a displayed track had no audio and was
+  followed by another displayed track, `queue[i]` would point at the
+  wrong entry (or be out of bounds) for everything after the gap.
+  Currently dormant — every track in the catalog has `audioUrl` today,
+  verified by the reviewer across all 151 track files — but a latent
+  bug waiting for the first no-audio track added ahead of a playable
+  one. **Fixed**: added a separate `queueIndex` (position among only
+  audio-having tracks) in `src/pages/albums/[id].astro`, used for
+  `data-index` instead of `i`; `i` still drives the visible track
+  number via `displayTrackNumber()`, unaffected. Verified across all
+  16 albums (145 playable rows): every row's `data-index` now resolves
+  to the matching `queue` entry.
+- **Minor**: `--font-display`/`--font-body`/`--font-mono` in
+  `global.css` were missing several of the POC's fallback fonts
+  (`Rajdhani`, `system-ui`, `"Segoe UI"`, `Menlo`, `Consonas`) —
+  harmless today since the primary webfonts load, but incomplete.
+  Fixed to match the POC's fallback stacks exactly. (This did not
+  resolve the one remaining 2px `.code` height difference noted below
+  — that diff's exact cause is still unconfirmed, but it's isolated,
+  doesn't cascade into any other element's position, and is
+  non-blocking.)
+- Also noted, not fixed (zero visible effect, skipped for efficiency):
+  the icon-only `.collapse` button resolves to native button font
+  metrics instead of inheriting the page font — invisible since it has
+  no text.
 
 ### What changed
 - `src/pages/albums/[id].astro`: track list rebuilt as a scroll-snap

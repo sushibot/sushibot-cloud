@@ -52,6 +52,20 @@ const metaParts = [
   bpms.length > 0 ? `${Math.min(...bpms)}–${Math.max(...bpms)} BPM` : null,
 ].filter(Boolean)
 const metaText = metaParts.join(" · ")
+
+// queueIndex is this track's position among only the audio-having
+// tracks -- the client-side `queue` array (built below from this same
+// filter) is compacted to just those, so a row's data-index has to
+// match that compacted position, not its position in the full list
+// (`i`, used for the visible track number instead). A disabled
+// no-audio row never sets data-index, so queueIndex is never read for
+// those.
+let qi = 0
+const trackRows = tracks.map((track, i) => ({
+  track,
+  i,
+  queueIndex: track.data.audioUrl ? qi++ : -1,
+}))
 ---
 
 <Layout>
@@ -87,7 +101,7 @@ const metaText = metaParts.join(" · ")
         tracks.length > 0 ? (
           <div class="wheel" id="wTracks">
             <ol id="olTracks" aria-label="Tracks">
-              {tracks.map((track, i) => {
+              {trackRows.map(({ track, i, queueIndex }) => {
                 const displayTitle = track.data.displayTitle ?? track.data.title
                 const hasAudio = !!track.data.audioUrl
                 const label = `${displayTitle}${track.data.bpm != null ? `, ${track.data.bpm} BPM` : ""}`
@@ -101,7 +115,7 @@ const metaText = metaParts.join(" · ")
                           tabindex="-1"
                           href={track.data.audioUrl}
                           aria-label={label}
-                          data-index={i}
+                          data-index={queueIndex}
                           data-audio-url={track.data.audioUrl}
                         >
                           <span class="disc" style={discStyle}>
@@ -167,8 +181,7 @@ const metaText = metaParts.join(" · ")
     type="application/json"
     id="album-queue"
     set:html={JSON.stringify(
-      tracks
-        .map((track, i) => ({ track, i }))
+      trackRows
         .filter(({ track }) => track.data.audioUrl)
         .map(({ track, i }) => ({
           id: track.id.split("/").pop(),

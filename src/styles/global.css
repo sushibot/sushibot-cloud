@@ -22,9 +22,9 @@
   --era-2021: #a9544b;
   --era-2024: #c0392f;
 
-  --font-display: "Chakra Petch", sans-serif;
-  --font-body: "Barlow", -apple-system, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Chakra Petch", "Rajdhani", system-ui, sans-serif;
+  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
 
   /* layout primitives shared across the sticky nav and every screen below
      it -- not itemized in the token list but ported alongside it since the
