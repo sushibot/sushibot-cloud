@@ -672,6 +672,7 @@ const rail = eraOrder
     }
 
     function layout() {
+      if (!scroller!.isConnected) return
       const r = rowH()
       const h = scroller!.clientHeight
       ol!.style.paddingTop = Math.max(0, h * 0.5 - r / 2) + "px"
@@ -680,6 +681,12 @@ const rail = eraOrder
 
     function update() {
       if (!rows.length) return
+      // the ResizeObserver below isn't disconnected on client-side
+      // navigation away from this page, so it can fire once more against
+      // the detached (zero-height) old scroller mid-transition --
+      // without this guard that turns scrollTop/rowH() into NaN and
+      // rows[NaN] throws on the next line
+      if (!scroller!.isConnected) return
       const f = scroller!.scrollTop / rowH()
       const lo = Math.max(0, Math.floor(f) - 5)
       const hi = Math.min(rows.length - 1, Math.ceil(f) + 5)
