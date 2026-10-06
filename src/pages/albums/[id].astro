@@ -57,16 +57,19 @@ const metaText = metaParts.join(" · ")
 <Layout>
   <Nav />
 
-  <section class="album-page" aria-label={album.data.title}>
+  <section class="track-page" aria-label={album.data.title}>
     <div class="col">
       <header class="thead">
         <a class="back" href="/albums/">
           <svg
+            width="18"
+            height="18"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
             stroke-width="2.4"
-            stroke-linecap="square"
+            stroke-linecap="round"
+            stroke-linejoin="round"
             aria-hidden="true"
           >
             <path d="M15 5l-7 7 7 7" />
@@ -74,79 +77,85 @@ const metaText = metaParts.join(" · ")
           Archives
         </a>
         <p class="eyebrow">A{String(albumIndex + 1).padStart(2, "0")} &middot; {year}</p>
-        <h1 class="atitle">{album.data.title}</h1>
-        {metaText && <p class="dim">{metaText}</p>}
+        <h2>{album.data.title}</h2>
+        <div class="thead-row">
+          <p class="dim">{metaText}</p>
+        </div>
       </header>
 
       {
         tracks.length > 0 ? (
-          <ol id="tracklist" aria-label="Tracks">
-            {tracks.map((track, i) => {
-              const displayTitle = track.data.displayTitle ?? track.data.title
-              const hasAudio = !!track.data.audioUrl
-              const label = `${displayTitle}${track.data.bpm != null ? `, ${track.data.bpm} BPM` : ""}`
-              const num = String(track.data.trackNumber).padStart(2, "0")
-              return (
-                <li class="row">
-                  <div class="rowx">
-                    {hasAudio ? (
-                      <a
-                        class="rowbtn track-play"
-                        href={track.data.audioUrl}
-                        aria-label={label}
-                        data-index={i}
-                        data-audio-url={track.data.audioUrl}
-                      >
-                        <span class="disc" style={discStyle}>
-                          <span class="num">{num}</span>
-                        </span>
-                        <span class="txt">
-                          <span class="name">{displayTitle}</span>
-                          {(track.data.bpm != null || track.data.key) && (
-                            <span class="meta">
-                              {track.data.bpm != null ? `${track.data.bpm} BPM` : ""}
-                              {track.data.bpm != null && track.data.key ? " · " : ""}
-                              {track.data.key && <span class="key">{track.data.key}</span>}
-                            </span>
-                          )}
-                        </span>
-                        <span class="eq" aria-hidden="true">
-                          <i /><i /><i /><i /><i />
-                        </span>
-                        <span class="rprog" aria-hidden="true">
-                          <i />
-                        </span>
-                        <span class="cta cta-ico">
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M7 4.5v15l13-7.5z" />
-                          </svg>
-                        </span>
-                      </a>
-                    ) : (
-                      <div
-                        class="rowbtn rowbtn-disabled"
-                        aria-label={`${displayTitle} (no audio available)`}
-                      >
-                        <span class="disc" style={discStyle}>
-                          <span class="num">{num}</span>
-                        </span>
-                        <span class="txt">
-                          <span class="name">{displayTitle}</span>
-                          {(track.data.bpm != null || track.data.key) && (
-                            <span class="meta">
-                              {track.data.bpm != null ? `${track.data.bpm} BPM` : ""}
-                              {track.data.bpm != null && track.data.key ? " · " : ""}
-                              {track.data.key && <span class="key">{track.data.key}</span>}
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ol>
+          <div class="wheel" id="wTracks">
+            <ol id="olTracks" aria-label="Tracks">
+              {tracks.map((track, i) => {
+                const displayTitle = track.data.displayTitle ?? track.data.title
+                const hasAudio = !!track.data.audioUrl
+                const label = `${displayTitle}${track.data.bpm != null ? `, ${track.data.bpm} BPM` : ""}`
+                const num = String(track.data.trackNumber).padStart(2, "0")
+                return (
+                  <li class="row" data-i={i} data-era={era.token}>
+                    <div class="rowx">
+                      {hasAudio ? (
+                        <a
+                          class="rowbtn track-play"
+                          tabindex="-1"
+                          href={track.data.audioUrl}
+                          aria-label={label}
+                          data-index={i}
+                          data-audio-url={track.data.audioUrl}
+                        >
+                          <span class="disc" style={discStyle}>
+                            <span class="num">{num}</span>
+                          </span>
+                          <span class="txt">
+                            <span class="name">{displayTitle}</span>
+                            {(track.data.bpm != null || track.data.key) && (
+                              <span class="meta">
+                                {track.data.bpm != null ? `${track.data.bpm} BPM` : ""}
+                                {track.data.bpm != null && track.data.key ? " · " : ""}
+                                {track.data.key && <span class="key">{track.data.key}</span>}
+                              </span>
+                            )}
+                          </span>
+                          <span class="eq" aria-hidden="true">
+                            <i /><i /><i /><i /><i />
+                          </span>
+                          <span class="rprog" aria-hidden="true">
+                            <i />
+                          </span>
+                          <span class="cta cta-ico">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M7 4.5v15l13-7.5z" />
+                            </svg>
+                          </span>
+                        </a>
+                      ) : (
+                        <div
+                          class="rowbtn rowbtn-disabled"
+                          tabindex="-1"
+                          aria-label={`${displayTitle} (no audio available)`}
+                        >
+                          <span class="disc" style={discStyle}>
+                            <span class="num">{num}</span>
+                          </span>
+                          <span class="txt">
+                            <span class="name">{displayTitle}</span>
+                            {(track.data.bpm != null || track.data.key) && (
+                              <span class="meta">
+                                {track.data.bpm != null ? `${track.data.bpm} BPM` : ""}
+                                {track.data.bpm != null && track.data.key ? " · " : ""}
+                                {track.data.key && <span class="key">{track.data.key}</span>}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ol>
+          </div>
         ) : (
           <p class="empty">No tracks found.</p>
         )
@@ -168,17 +177,26 @@ const metaText = metaParts.join(" · ")
           audioUrl: track.data.audioUrl,
           bpm: track.data.bpm,
           key: track.data.key,
+          code: `A${String(albumIndex + 1).padStart(2, "0")}-T${String(track.data.trackNumber).padStart(2, "0")}`,
+          year,
+          trackNum: track.data.trackNumber,
+          trackTotal: tracks.length,
+          eraBg: era.bg,
+          eraFg: era.fg,
         })),
     )}
   />
 </Layout>
 
 <script>
-  function initTracklist() {
-    const list = document.getElementById("tracklist")
+  import { createWheel } from "../../lib/wheel"
+
+  function initTrackWheel() {
+    const ol = document.getElementById("olTracks")
+    const scroller = document.getElementById("wTracks") as HTMLElement | null
     const queueEl = document.getElementById("album-queue")
-    if (!list || !queueEl || list.dataset.initialized === "true") return
-    list.dataset.initialized = "true"
+    if (!ol || !scroller || !queueEl || ol.dataset.initialized === "true") return
+    ol.dataset.initialized = "true"
 
     let queue: {
       id?: string
@@ -188,6 +206,12 @@ const metaText = metaParts.join(" · ")
       audioUrl: string
       bpm?: number
       key?: string
+      code?: string
+      year?: number
+      trackNum?: number
+      trackTotal?: number
+      eraBg?: string
+      eraFg?: string
     }[] = []
     try {
       queue = JSON.parse(queueEl.textContent ?? "[]")
@@ -196,46 +220,29 @@ const metaText = metaParts.join(" · ")
     }
 
     let activeAudioUrl: string | null = null
+    const rows = Array.from(ol.children) as HTMLElement[]
 
-    function applyState() {
-      list?.querySelectorAll<HTMLLIElement>(".row").forEach((row) => {
-        const link = row.querySelector<HTMLElement>(".rowbtn")
-        const isActive =
-          !!activeAudioUrl && link?.dataset.audioUrl === activeAudioUrl
-        row.classList.toggle("is-current", isActive)
+    function markCurrent() {
+      rows.forEach((li) => {
+        const btn = li.querySelector(".rowbtn") as HTMLElement | null
+        const isCurrent = !!btn?.dataset.audioUrl && btn.dataset.audioUrl === activeAudioUrl
+        li.classList.toggle("is-current", isCurrent)
       })
     }
 
     document.addEventListener("player:state", ((event: CustomEvent) => {
       const detail = event.detail ?? {}
       activeAudioUrl = detail.audioUrl ?? null
-      applyState()
+      markCurrent()
     }) as EventListener)
-
     document.dispatchEvent(new CustomEvent("player:query"))
-
-    // Deep link support: ?track={slug} selects and loads that track
-    // into the player (same "active" highlight as normal) without
-    // starting playback, so a shared link previews rather than
-    // auto-plays.
-    const urlTrackId = new URLSearchParams(location.search).get("track")
-    if (urlTrackId) {
-      const urlIndex = queue.findIndex((track) => track.id === urlTrackId)
-      if (urlIndex !== -1) {
-        document.dispatchEvent(
-          new CustomEvent("player:play", {
-            detail: { queue, index: urlIndex, autoplay: false },
-          }),
-        )
-      }
-    }
 
     // Same breakpoint the POC's desk.matches uses for "play also opens
     // the stage".
     const deskMql = window.matchMedia("(min-width: 980px)")
 
-    function playRow(row: HTMLLIElement) {
-      const link = row.querySelector<HTMLElement>(".rowbtn.track-play")
+    function playRow(li: HTMLElement) {
+      const link = li.querySelector(".rowbtn.track-play") as HTMLElement | null
       const audioUrl = link?.dataset.audioUrl
       if (!link || !audioUrl) return
       if (audioUrl === activeAudioUrl) {
@@ -262,381 +269,102 @@ const metaText = metaParts.join(" · ")
       )
     }
 
-    list.querySelectorAll<HTMLLIElement>(".row").forEach((row) => {
-      const link = row.querySelector<HTMLElement>(".rowbtn.track-play")
-      link?.addEventListener("click", (event) => {
-        event.preventDefault()
-        playRow(row)
-      })
+    // Same wheel mechanics as the archives wheel (src/lib/wheel.ts), with
+    // the POC's track-panel anchor (focus sits higher than center so the
+    // list doesn't open with empty space above it).
+    const wheel = createWheel(scroller, ol, {
+      onActivate: (i) => {
+        if (rows[i]) playRow(rows[i])
+      },
+      anchor: 0.34,
     })
-  }
 
-  document.addEventListener("astro:page-load", initTracklist)
-</script>
-
-<style>
-  :root {
-    --rowh: 88px;
-    --disc: 72px;
-    --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-  }
-  @media (min-width: 980px) {
-    :root {
-      --rowh: 92px;
-      --disc: 76px;
+    // Deep link support: ?track={slug} selects and loads that track into
+    // the player (same "active" highlight as normal) without starting
+    // playback, so a shared link previews rather than auto-plays, and
+    // scrolls that row to the wheel's focus position.
+    const urlTrackId = new URLSearchParams(location.search).get("track")
+    if (urlTrackId) {
+      const urlIndex = queue.findIndex((track) => track.id === urlTrackId)
+      if (urlIndex !== -1) {
+        document.dispatchEvent(
+          new CustomEvent("player:play", {
+            detail: { queue, index: urlIndex, autoplay: false },
+          }),
+        )
+        wheel.goTo(urlIndex, false)
+      }
     }
   }
 
-  .album-page {
-    padding: 24px 12px 72px;
-  }
-  .col {
-    width: 100%;
-    max-width: 720px;
-    margin-inline: auto;
-  }
+  document.addEventListener("astro:page-load", initTrackWheel)
+</script>
 
+<style>
+  .track-page {
+    display: flex;
+    flex-direction: column;
+    height: calc(100svh - var(--navh));
+    min-height: 0;
+    background: var(--void);
+  }
   .thead {
     display: grid;
     gap: 6px;
-    padding: 0 4px 20px;
+    padding: 24px 16px 12px;
+  }
+  .thead h2 {
+    margin: 0;
+    font: 700 clamp(30px, 8.5vw, 44px) / 1.02 var(--font-display);
+    text-wrap: balance;
+  }
+  .thead-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
   }
   .back {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     min-height: 44px;
-    margin: 0 0 4px -8px;
-    padding: 0 10px 0 6px;
     width: fit-content;
-    color: var(--ash);
+    margin-left: -8px;
+    padding: 0 10px 0 6px;
+    background: none;
+    border: 0;
     text-decoration: none;
-    font: 600 13px var(--font-display);
-    letter-spacing: 0.08em;
+    cursor: pointer;
+    font: 600 15px var(--font-display);
+    letter-spacing: 0.06em;
     text-transform: uppercase;
+    color: var(--ash);
     transition: color 0.15s;
   }
   .back:hover {
     color: var(--bone);
   }
-  .back svg {
-    width: 16px;
-    height: 16px;
-  }
   .eyebrow {
     margin: 0;
-    font: 500 12px var(--font-mono);
+    font: 500 12px/1.2 var(--font-mono);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--ash);
   }
-  .atitle {
-    margin: 0;
-    font: 700 clamp(30px, 8vw, 44px) / 1.02 var(--font-display);
-    text-transform: uppercase;
-    text-wrap: balance;
-  }
   .dim {
-    margin: 0;
-    font: 400 12px var(--font-mono);
+    font: 400 12px/1.3 var(--font-mono);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--ash);
+    margin: 0;
   }
   .empty {
-    padding: 0 4px;
+    padding: 0 16px;
     color: var(--ash);
-  }
-
-  /* ---- track rows -- same cut-plate pieces as the archives wheel's
-     album rows, reused rather than inventing a new row style. No
-     scroll-snap here (this is a normal page, not an internally-
-     scrolled wheel), and the "focused" cream-paper treatment is
-     retriggered by hover/focus-visible instead of scroll position. ---- */
-  #tracklist {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-  .row {
-    height: var(--rowh);
-  }
-  .rowx {
-    height: 100%;
-    padding-block: 5px;
-  }
-  .rowbtn {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    width: 100%;
-    height: 100%;
-    padding: 0 16px 0 10px;
-    border: 0;
-    border-radius: 0;
-    text-align: left;
-    text-decoration: none;
-    cursor: pointer;
-    box-shadow: none;
-    --cut: 12px;
-    background: rgba(239, 230, 204, 0.3);
-    color: var(--bone);
-    clip-path: polygon(
-      var(--cut) 0,
-      100% 0,
-      100% calc(100% - var(--cut)),
-      calc(100% - var(--cut)) 100%,
-      0 100%,
-      0 var(--cut)
-    );
-    transition:
-      background-color 0.25s,
-      box-shadow 0.25s;
   }
   .rowbtn-disabled {
     cursor: default;
     opacity: 0.55;
-  }
-  .rowbtn::before {
-    content: "";
-    position: absolute;
-    inset: 1px;
-    background: var(--static);
-    clip-path: polygon(
-      calc(var(--cut) - 0.4px) 0,
-      100% 0,
-      100% calc(100% - var(--cut) + 0.4px),
-      calc(100% - var(--cut) + 0.4px) 100%,
-      0 100%,
-      0 calc(var(--cut) - 0.4px)
-    );
-  }
-  .rowbtn::after {
-    content: "";
-    position: absolute;
-    inset: 1px;
-    pointer-events: none;
-    mix-blend-mode: screen;
-    opacity: 0.34;
-    background:
-      radial-gradient(60% 120% at 12% 20%, rgba(239, 230, 204, 0.16), transparent 70%),
-      radial-gradient(50% 100% at 88% 90%, rgba(239, 230, 204, 0.12), transparent 70%),
-      radial-gradient(
-          circle at 30% 70%,
-          rgba(239, 230, 204, 0.55) 0 0.6px,
-          transparent 1px
-        )
-        0 0 / 37px 29px,
-      radial-gradient(
-          circle at 70% 30%,
-          rgba(239, 230, 204, 0.45) 0 0.5px,
-          transparent 1px
-        )
-        0 0 / 53px 41px,
-      var(--grain);
-  }
-  .rowbtn > * {
-    position: relative;
-    z-index: 1;
-  }
-  .rowbtn:focus-visible {
-    outline: 2px solid var(--glow);
-    outline-offset: -2px;
-  }
-
-  .disc {
-    position: relative;
-    flex: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--disc);
-    height: var(--disc);
-    border-radius: 0;
-    background: var(--c);
-    color: var(--cf);
-    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-    box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.18);
-  }
-  .disc .num {
-    font: 700 24px/1 var(--font-display);
-  }
-  .disc::after {
-    content: "";
-    position: absolute;
-    inset: -5px;
-    border-radius: 50%;
-    border: 1.5px dashed rgba(239, 230, 204, 0.26);
-    display: none;
-  }
-  .row.is-current .disc::after {
-    display: block;
-    border-style: solid;
-    border-color: var(--bone);
-  }
-  :global(body.playing) .row.is-current .disc::after {
-    border-color: var(--pop);
-  }
-
-  .txt {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 0;
-    flex: 1;
-  }
-  .name {
-    font: 600 19px/1.15 var(--font-display);
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    overflow: hidden;
-    overflow-wrap: anywhere;
-  }
-  .meta {
-    font: 400 12px/1.2 var(--font-mono);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--ash);
-  }
-  .meta .key {
-    text-transform: none;
-  }
-
-  .cta {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    min-width: 56px;
-    min-height: 44px;
-    padding: 0 14px;
-    border-radius: 0;
-    border: 1px solid rgba(239, 230, 204, 0.45);
-    color: var(--bone);
-  }
-  .cta-ico svg {
-    display: block;
-    width: 22px;
-    height: 22px;
-    fill: currentColor;
-  }
-
-  /* ---- hover/focus: cream strip, square-cut taper (same visual asset
-     as the archives wheel's "focused" row, retriggered by interaction
-     instead of scroll position) ---- */
-  .rowbtn.track-play:hover,
-  .rowbtn.track-play:focus-visible {
-    background: var(--paper);
-    color: var(--paper-ink);
-    -webkit-mask-image:
-      linear-gradient(90deg, #000 91%, transparent),
-      radial-gradient(#000 40%, transparent 41%);
-    mask-image:
-      linear-gradient(90deg, #000 91%, transparent),
-      radial-gradient(#000 40%, transparent 41%);
-    -webkit-mask-size: 100% 100%, 6px 6px;
-    mask-size: 100% 100%, 6px 6px;
-  }
-  .rowbtn.track-play:hover::before,
-  .rowbtn.track-play:focus-visible::before {
-    display: none;
-  }
-  .rowbtn.track-play:hover::after,
-  .rowbtn.track-play:focus-visible::after {
-    inset: 0;
-    mix-blend-mode: multiply;
-    opacity: 0.55;
-    background:
-      radial-gradient(60% 140% at 8% 30%, rgba(26, 23, 16, 0.22), transparent 70%),
-      radial-gradient(45% 120% at 62% 100%, rgba(26, 23, 16, 0.16), transparent 70%),
-      radial-gradient(
-          circle at 30% 70%,
-          rgba(26, 23, 16, 0.5) 0 0.7px,
-          transparent 1.2px
-        )
-        0 0 / 43px 31px,
-      radial-gradient(
-          circle at 70% 30%,
-          rgba(26, 23, 16, 0.4) 0 0.6px,
-          transparent 1.1px
-        )
-        12px 7px / 67px 53px,
-      var(--grain);
-  }
-  .rowbtn.track-play:hover .meta,
-  .rowbtn.track-play:focus-visible .meta {
-    color: rgba(26, 23, 16, 0.72);
-  }
-  .rowbtn.track-play:hover .cta,
-  .rowbtn.track-play:focus-visible .cta {
-    border-color: var(--paper-ink);
-    color: var(--paper-ink);
-  }
-  .rowbtn.track-play:hover .disc,
-  .rowbtn.track-play:focus-visible .disc {
-    box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.28);
-  }
-
-  /* ---- playing indicator: peak-hold meter + progress line. The meter
-     bars render statically (--n/--k default to 1) until PlayerBar's
-     real-time level data is wired in a later step. ---- */
-  .eq {
-    display: none;
-    flex: none;
-    align-items: flex-end;
-    gap: 3px;
-    height: 30px;
-    margin-left: auto;
-  }
-  .row.is-current .eq {
-    display: flex;
-  }
-  .eq i {
-    position: relative;
-    display: block;
-    width: 5px;
-    height: 30px;
-  }
-  .eq i::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: repeating-linear-gradient(to top, var(--glow) 0 4px, transparent 4px 6px);
-    clip-path: inset(calc(30px - var(--n, 1) * 6px) 0 0 0);
-  }
-  .eq i::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 4px;
-    bottom: calc((var(--k, 1) - 1) * 6px + 2px);
-    background: var(--bone);
-  }
-  .rowbtn.track-play:hover .eq i::after,
-  .rowbtn.track-play:focus-visible .eq i::after {
-    background: var(--paper-ink);
-  }
-  .rowbtn > .rprog {
-    display: none;
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 5px;
-    z-index: 2;
-    background: rgba(239, 230, 204, 0.16);
-  }
-  .row.is-current .rowbtn > .rprog {
-    display: block;
-  }
-  .rprog i {
-    display: block;
-    height: 100%;
-    width: var(--prog, 0%);
-    background: var(--pop);
   }
 </style>

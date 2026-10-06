@@ -88,56 +88,68 @@
   </div>
 </div>
 
-<div
+<section
   class="player-drawer"
   id="player-drawer"
+  aria-label="Now playing"
   role="dialog"
   aria-modal="true"
   aria-hidden="true"
   transition:persist
   transition:name="player-drawer"
 >
-  <div class="drawer-top">
-    <button
-      class="drawer-close"
-      id="drawer-close-btn"
-      type="button"
-      aria-label="Close player"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.4"
-        stroke-linecap="square"
-        stroke-linejoin="miter"
-        aria-hidden="true"
+  <div class="stage-in">
+    <div class="stage-top">
+      <button
+        class="icon-btn collapse"
+        id="drawer-close-btn"
+        type="button"
+        aria-label="Back to archives"
       >
-        <path d="M15 5l-7 7 7 7" />
-      </svg>
-    </button>
-    <span class="drawer-chip">Now playing</span>
-  </div>
-
-  <div class="drawer-content">
-    <div class="drawer-meta">
-      <div class="drawer-title" id="drawer-title"></div>
-      <a class="drawer-album" id="drawer-album"></a>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.4"
+          stroke-linecap="square"
+          stroke-linejoin="miter"
+          aria-hidden="true"
+        >
+          <path d="M15 5l-7 7 7 7" />
+        </svg>
+      </button>
+      <div class="eyebrow-row">
+        <span class="chip">Now playing</span>
+        <span class="code" aria-hidden="true">
+          <span id="drawer-barcode" data-barcode="stage"></span>
+          <span id="drawer-code"></span>
+        </span>
+      </div>
     </div>
 
-    <div class="drawer-viz-wrap">
-      <canvas id="player-viz" aria-hidden="true"></canvas>
-      <div class="drawer-decal" id="drawer-decal" hidden aria-hidden="true">
+    <div>
+      <h2 class="title" id="drawer-title">Pick a track</h2>
+      <p class="sub" id="drawer-sub"></p>
+    </div>
+
+    <div class="viz-wrap">
+      <canvas
+        id="player-viz"
+        role="img"
+        aria-label="Live frequency bars. A cream cap holds at each peak, then falls."
+      ></canvas>
+      <div class="decal" id="drawer-decal" hidden aria-hidden="true">
         <b>Signal</b>
         <span id="drawer-decal-text"></span>
         <i></i>
       </div>
     </div>
-    <div class="drawer-hazard" aria-hidden="true"></div>
+    <div class="hazard" aria-hidden="true"></div>
 
-    <div class="drawer-scrub">
+    <div class="seek-row">
+      <span id="drawer-cur-time">0:00</span>
       <input
-        class="range seek"
+        class="range"
         id="drawer-seek"
         type="range"
         min="0"
@@ -147,24 +159,24 @@
         aria-label="Seek"
         disabled
       />
-      <div class="drawer-times">
-        <span class="time" id="drawer-cur-time">0:00</span>
-        <span class="time now" id="drawer-tot-time">0:00</span>
-      </div>
+      <span id="drawer-tot-time">0:00</span>
     </div>
 
-    <div class="drawer-controls">
+    <div class="stage-transport">
       <button
-        class="tbtn"
+        class="icon-btn tb"
         id="drawer-prev-btn"
         type="button"
         aria-label="Previous track"
         disabled
       >
-        <span class="ic-skip prev"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 5h2.5v14H6zM20 5v14L9.5 12z" />
+        </svg>
+        <span class="tl">Prev</span>
       </button>
       <button
-        class="tbtn play"
+        class="icon-btn tb play"
         id="drawer-play-btn"
         type="button"
         aria-label="Play"
@@ -173,17 +185,20 @@
         <span class="ic-play" id="drawer-play-icon"></span>
       </button>
       <button
-        class="tbtn"
+        class="icon-btn tb"
         id="drawer-next-btn"
         type="button"
         aria-label="Next track"
         disabled
       >
-        <span class="ic-skip"></span>
+        <span class="tl">Next</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15.5 5H18v14h-2.5zM4 5l10.5 7L4 19z" />
+        </svg>
       </button>
     </div>
   </div>
-</div>
+</section>
 
 <script>
   // body isn't a transition:persist element -- Astro replaces it with a
@@ -196,6 +211,36 @@
       "player-active",
       bar.classList.contains("has-track"),
     )
+  }
+
+  // Same seeded-barcode generator as Nav.astro, duplicated rather than
+  // shared across a component boundary for a ~10-line utility -- the
+  // stage's barcode reseeds per track (Nav's own copy only reseeds
+  // per navigation), so this needs to be called directly from
+  // loadTrack() below.
+  function seededBarcode(seed: string, len: number, height: number) {
+    let h = 2166136261
+    for (let i = 0; i < seed.length; i++) {
+      h ^= seed.charCodeAt(i)
+      h = Math.imul(h, 16777619)
+    }
+    const rng = () => {
+      h |= 0
+      h = (h + 0x6d2b79f5) | 0
+      let t = Math.imul(h ^ (h >>> 15), 1 | h)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+    let x = 0
+    let out = ""
+    while (x < len) {
+      const w = 1 + Math.floor(rng() * 3)
+      const gap = 1 + Math.floor(rng() * 2)
+      if (x + w > len) break
+      out += `<rect x="${x}" y="0" width="${w}" height="${height}"/>`
+      x += w + gap
+    }
+    return `<svg class="bars" viewBox="0 0 ${len} ${height}" width="${len}" height="${height}" aria-hidden="true" fill="currentColor">${out}</svg>`
   }
 
   function initPlayerBar() {
@@ -241,9 +286,15 @@
     const drawerTitle = document.getElementById(
       "drawer-title",
     ) as HTMLDivElement | null
-    const drawerAlbum = document.getElementById(
-      "drawer-album",
-    ) as HTMLAnchorElement | null
+    const drawerSub = document.getElementById(
+      "drawer-sub",
+    ) as HTMLParagraphElement | null
+    const drawerBarcode = document.getElementById(
+      "drawer-barcode",
+    ) as HTMLSpanElement | null
+    const drawerCode = document.getElementById(
+      "drawer-code",
+    ) as HTMLSpanElement | null
     const drawerSeek = document.getElementById(
       "drawer-seek",
     ) as HTMLInputElement | null
@@ -304,6 +355,16 @@
       // reads them if present -- never invented when absent.
       bpm?: number
       key?: string
+      // optional stage furniture, all precomputed by the dispatcher
+      // (it has the album/track index and era data already, at build
+      // time) rather than looked up here -- absent fields just leave
+      // that piece of the subline/code off instead of inventing it.
+      code?: string // "A06-T02" style
+      year?: number
+      trackNum?: number
+      trackTotal?: number
+      eraBg?: string // e.g. "var(--era-2012)"
+      eraFg?: string
     }
 
     let queue: QueueTrack[] = []
@@ -466,14 +527,27 @@
         npAlbum.removeAttribute("href")
       }
       if (drawerTitle) drawerTitle.textContent = track.title
-      if (drawerAlbum) {
-        drawerAlbum.textContent = track.album ?? ""
-        if (track.albumId) drawerAlbum.href = `/albums/${track.albumId}/`
-        else drawerAlbum.removeAttribute("href")
+      if (drawerSub) {
+        const parts: string[] = []
+        if (track.album) parts.push(track.album)
+        if (track.year != null) parts.push(String(track.year))
+        if (track.trackNum != null && track.trackTotal != null) {
+          parts.push(`track ${track.trackNum} of ${track.trackTotal}`)
+        }
+        drawerSub.textContent = parts.join(" · ")
       }
+      if (drawerCode) drawerCode.textContent = track.code ?? ""
+      if (drawerBarcode) drawerBarcode.innerHTML = seededBarcode(track.audioUrl, 64, 14)
+      document.documentElement.style.setProperty("--stage-era", track.eraBg ?? "var(--scarlet)")
+      document.documentElement.style.setProperty("--stage-era-fg", track.eraFg ?? "var(--bone)")
       if (drawerDecal && drawerDecalText) {
-        if (track.bpm != null && track.key) {
-          drawerDecalText.textContent = `${track.bpm} BPM // ${track.key}`
+        // Shown when bpm OR key is present, not just when both are --
+        // the POC uses "//" as a separator between two possibly-partial
+        // fields, not a requirement that both exist.
+        if (track.bpm != null || track.key) {
+          const bpmPart = track.bpm != null ? `${track.bpm} BPM` : ""
+          const keyPart = track.key ?? ""
+          drawerDecalText.textContent = [bpmPart, keyPart].filter(Boolean).join(" // ")
           drawerDecal.hidden = false
         } else {
           drawerDecal.hidden = true
@@ -787,7 +861,7 @@
             const pitch = SEG + GAP
             const segs = Math.max(4, Math.floor((H + GAP) / pitch))
             const litColor = getComputedStyle(document.documentElement)
-              .getPropertyValue("--scarlet")
+              .getPropertyValue("--stage-era")
               .trim() || "#C0392F"
             const hotColor = getComputedStyle(document.documentElement)
               .getPropertyValue("--pop")
@@ -1184,81 +1258,119 @@
     z-index: 70;
     display: none;
     flex-direction: column;
-    gap: 16px;
     background: var(--void);
-    padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 16px
+      calc(16px + env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     overflow-x: hidden;
+    isolation: isolate;
   }
   .player-drawer.open {
     display: flex;
   }
-  .drawer-top {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  .player-drawer::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    left: 0;
+    right: 0;
+    top: -10%;
+    height: 55%;
+    background: radial-gradient(closest-side, rgba(34, 211, 238, 0.1), transparent 70%);
+    pointer-events: none;
   }
-  .drawer-close {
-    flex: none;
-    width: 44px;
-    height: 44px;
+  .stage-in {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    max-width: 980px;
+    margin: 0 auto;
+  }
+  .stage-top {
+    display: flex;
+    gap: 2px;
+  }
+  .icon-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
     border-radius: 0;
     border: 1px solid var(--line);
+    background: none;
+    cursor: pointer;
+  }
+  .icon-btn svg {
+    width: 22px;
+    height: 22px;
+    fill: currentColor;
+  }
+  .collapse {
+    flex: none;
+    width: 56px;
+    height: 56px;
+    background: #c0392f;
+    color: var(--bone);
+    border: 0;
+    transition: background 0.2s;
+  }
+  .collapse:hover {
+    background: var(--pop);
+  }
+  .collapse svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+  }
+  .eyebrow-row {
+    flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
-    justify-content: center;
-    background: transparent;
-    color: var(--bone);
-    cursor: pointer;
-    padding: 0;
+    justify-content: space-between;
+    gap: 10px;
+    height: 56px;
+    padding-inline: 16px;
+    background: var(--void);
+    box-shadow: inset 0 0 0 1px var(--line);
   }
-  .drawer-close svg {
-    width: 18px;
-    height: 18px;
-  }
-  .drawer-chip {
+  .chip {
     font: 600 13px/1 var(--font-display);
     letter-spacing: 0.2em;
     text-transform: uppercase;
     color: var(--bone);
   }
-  .drawer-content {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
+  .code {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font: 500 12px var(--font-mono);
+    letter-spacing: 0.08em;
+    color: var(--ash);
   }
-  .drawer-meta {
-    width: 100%;
-    text-align: left;
-  }
-  .drawer-title {
-    font: 700 clamp(28px, 9vw, 48px) / 1 var(--font-display);
+  .title {
+    margin: 10px 0 0;
+    font: 700 clamp(36px, 10.5vw, 84px) / 0.98 var(--font-display);
     text-transform: uppercase;
     letter-spacing: -0.005em;
-    color: var(--bone);
+    text-wrap: balance;
     text-shadow:
       0 0 0.55em var(--glow-soft),
       0 0 0.08em rgba(34, 211, 238, 0.5);
     overflow-wrap: anywhere;
   }
-  .drawer-album {
-    display: block;
-    margin-top: 8px;
-    font-family: var(--font-mono);
-    font-size: 0.82rem;
+  .sub {
+    margin: 10px 0 0;
     color: var(--ash);
-    text-decoration: none;
+    font-size: 16px;
   }
-  .drawer-album[href]:hover {
-    color: var(--pop);
-    text-decoration: underline;
-  }
-  .drawer-viz-wrap {
+  .viz-wrap {
     position: relative;
     flex: 1;
-    min-height: 160px;
+    min-height: 200px;
   }
   #player-viz {
     position: absolute;
@@ -1266,53 +1378,54 @@
     width: 100%;
     height: 100%;
     display: block;
+    filter: drop-shadow(0 0 16px rgba(34, 211, 238, 0.18));
   }
-  .drawer-decal {
+  .decal {
     position: absolute;
     right: -4px;
     top: -6px;
     transform: rotate(-3deg);
-    width: 130px;
-    padding: 7px 10px 10px;
+    width: 150px;
+    padding: 8px 12px 12px;
     background: var(--hazard);
     color: var(--void);
     clip-path: polygon(
       0 0,
-      calc(100% - 12px) 0,
-      100% 12px,
+      calc(100% - 14px) 0,
+      100% 14px,
       100% 100%,
-      12px 100%,
-      0 calc(100% - 12px)
+      14px 100%,
+      0 calc(100% - 14px)
     );
     pointer-events: none;
   }
-  .drawer-decal[hidden] {
+  .decal[hidden] {
     display: none;
   }
-  .drawer-decal b {
+  .decal b {
     display: block;
-    font: 700 16px/1 var(--font-display);
+    font: 700 18px/1 var(--font-display);
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
-  .drawer-decal span {
+  .decal span {
     display: block;
-    margin-top: 3px;
-    font: 500 11px/1.2 var(--font-mono);
+    margin-top: 4px;
+    font: 500 12px/1.2 var(--font-mono);
     letter-spacing: 0.04em;
   }
-  .drawer-decal i {
+  .decal i {
     display: block;
-    margin-top: 5px;
-    height: 5px;
+    margin-top: 6px;
+    height: 6px;
     background: repeating-linear-gradient(
       -45deg,
       var(--void) 0 5px,
       transparent 5px 10px
     );
   }
-  .drawer-hazard {
-    height: 7px;
+  .hazard {
+    height: 8px;
     opacity: 0.5;
     background: repeating-linear-gradient(
       -45deg,
@@ -1320,68 +1433,83 @@
       transparent 8px 16px
     );
   }
-  .drawer-scrub {
-    width: 100%;
-  }
-  .drawer-scrub .range {
-    width: 100%;
-    display: block;
-  }
-  .drawer-times {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 8px;
-  }
-  .drawer-times .time {
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    color: var(--ash-dim);
+  .seek-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 12px;
+    font: 400 13px var(--font-mono);
+    color: var(--ash);
     font-variant-numeric: tabular-nums;
   }
-  .drawer-times .time.now {
-    color: var(--ash);
+  .seek-row .range {
+    width: 100%;
   }
-  .drawer-controls {
+  .stage-transport {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr 1fr;
+    gap: 2px;
+  }
+  .stage-transport .tb {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 24px;
+    gap: 10px;
+    width: auto;
+    height: 64px;
+    border: 0;
+    background: var(--static-2);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--bone);
+    font: 600 13px var(--font-display);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.2s;
   }
-  .drawer-controls .tbtn {
-    width: 48px;
-    height: 48px;
+  .stage-transport .tb:hover:not(:disabled) {
+    background: #243049;
   }
-  .drawer-controls .tbtn.play {
-    width: 60px;
-    height: 60px;
+  .stage-transport .tb:disabled {
+    cursor: default;
+    opacity: 0.5;
   }
-  .drawer-controls .ic-play {
+  .stage-transport .tb svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+  }
+  .stage-transport .tb.play {
+    background: var(--pop);
+    box-shadow: none;
+  }
+  .stage-transport .tb.play:hover:not(:disabled) {
+    background: #f0583f;
+  }
+  .stage-transport .tb.play .ic-play {
     border-width: 8px 0 8px 13px;
   }
-  .drawer-controls .ic-pause {
+  .stage-transport .tb.play .ic-pause {
     width: 13px;
     height: 16px;
   }
-  .drawer-controls .ic-skip {
-    width: 15px;
-    height: 14px;
-  }
-  .drawer-controls .ic-skip::before {
-    border-width: 7px 0 7px 10px;
-  }
-  .drawer-controls .ic-skip::after {
-    width: 2.5px;
-    height: 14px;
+  @media (max-width: 379px) {
+    .stage-transport .tb .tl {
+      display: none;
+    }
   }
 
   @media (min-width: 980px) {
     .player-drawer {
       padding: 20px 32px 28px;
     }
-    .drawer-title {
+    .stage-in {
+      gap: 24px;
+    }
+    .title {
       font-size: clamp(52px, 6vw, 92px);
     }
-    .drawer-decal {
+    .decal {
       right: 12px;
       top: 10px;
     }
