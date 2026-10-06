@@ -7,7 +7,12 @@
   transition:persist
   transition:name="player-bar"
 >
-  <audio id="player-audio" preload="none"></audio>
+  <audio
+    id="player-audio"
+    preload="none"
+    transition:persist
+    transition:name="player-audio"
+  ></audio>
 
   <div class="progress-border" id="progress-border" aria-hidden="true">
     <div class="progress-fill" id="progress-fill"></div>
@@ -65,54 +70,6 @@
         <span class="time now" id="tot-time">0:00</span>
       </div>
     </div>
-
-    <div class="vol">
-      <button class="mute-btn" id="mute-btn" type="button" aria-label="Mute">
-        <svg
-          class="ic-vol"
-          id="vol-icon-on"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z">
-          </path>
-          <path d="M16 9a5 5 0 0 1 0 6"></path>
-          <path d="M19.364 18.364a9 9 0 0 0 0-12.728"></path>
-        </svg>
-        <svg
-          class="ic-vol"
-          id="vol-icon-off"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-          hidden
-        >
-          <path d="M11 4.702a.7.7 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.7.7 0 0 0 11 19.298z">
-          </path>
-          <path d="m16.5 14.5 5-5"></path>
-          <path d="m16.5 9.5 5 5"></path>
-        </svg>
-      </button>
-      <input
-        class="range volume"
-        id="volume"
-        type="range"
-        min="0"
-        max="100"
-        value="80"
-        step="1"
-        aria-label="Volume"
-      />
-    </div>
   </div>
 </div>
 
@@ -125,22 +82,43 @@
   transition:persist
   transition:name="player-drawer"
 >
-  <button
-    class="drawer-close"
-    id="drawer-close-btn"
-    type="button"
-    aria-label="Close player"
-  >
-    <span class="ic-chevron-down"></span>
-  </button>
+  <div class="drawer-top">
+    <button
+      class="drawer-close"
+      id="drawer-close-btn"
+      type="button"
+      aria-label="Close player"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.4"
+        stroke-linecap="square"
+        stroke-linejoin="miter"
+        aria-hidden="true"
+      >
+        <path d="M15 5l-7 7 7 7" />
+      </svg>
+    </button>
+    <span class="drawer-chip">Now playing</span>
+  </div>
 
   <div class="drawer-content">
-    <img class="drawer-art" src="/album-art/sushibot.jpg" alt="" />
-
     <div class="drawer-meta">
       <div class="drawer-title" id="drawer-title"></div>
       <a class="drawer-album" id="drawer-album"></a>
     </div>
+
+    <div class="drawer-viz-wrap">
+      <canvas id="player-viz" aria-hidden="true"></canvas>
+      <div class="drawer-decal" id="drawer-decal" hidden aria-hidden="true">
+        <b>Signal</b>
+        <span id="drawer-decal-text"></span>
+        <i></i>
+      </div>
+    </div>
+    <div class="drawer-hazard" aria-hidden="true"></div>
 
     <div class="drawer-scrub">
       <input
@@ -222,10 +200,6 @@
     const totTimeEl = document.getElementById("tot-time") as HTMLSpanElement
     const npTitle = document.getElementById("np-title") as HTMLDivElement
     const npAlbum = document.getElementById("np-album") as HTMLAnchorElement
-    const muteBtn = document.getElementById("mute-btn") as HTMLButtonElement
-    const volIconOn = document.getElementById("vol-icon-on") as SVGElement
-    const volIconOff = document.getElementById("vol-icon-off") as SVGElement
-    const volume = document.getElementById("volume") as HTMLInputElement
     const progressFill = document.getElementById(
       "progress-fill",
     ) as HTMLDivElement
@@ -266,6 +240,17 @@
     const drawerPlayIcon = document.getElementById(
       "drawer-play-icon",
     ) as HTMLSpanElement | null
+    // New in step 8: optional "Signal" decal (bpm/key), shown only when a
+    // track carries that data, and the stage's spectrum canvas.
+    const drawerDecal = document.getElementById(
+      "drawer-decal",
+    ) as HTMLDivElement | null
+    const drawerDecalText = document.getElementById(
+      "drawer-decal-text",
+    ) as HTMLSpanElement | null
+    const viz = document.getElementById(
+      "player-viz",
+    ) as HTMLCanvasElement | null
 
     if (
       !audio ||
@@ -279,10 +264,6 @@
       !npTitle ||
       !npAlbum ||
       !npEl ||
-      !muteBtn ||
-      !volIconOn ||
-      !volIconOff ||
-      !volume ||
       !progressFill
     ) {
       return
@@ -293,6 +274,11 @@
       album?: string
       albumId?: string
       audioUrl: string
+      // optional: not sent by any dispatcher yet (no track in the
+      // content collection has bpm/key set), but the stage's decal
+      // reads them if present -- never invented when absent.
+      bpm?: number
+      key?: string
     }
 
     let queue: QueueTrack[] = []
@@ -360,15 +346,85 @@
       if (drawerNextBtn) drawerNextBtn.disabled = queue.length === 0
     }
 
-    function setHidden(el: SVGElement, isHidden: boolean) {
-      if (isHidden) el.setAttribute("hidden", "")
-      else el.removeAttribute("hidden")
+    // ---------- step 8: CORS capability check + real analyser (additive) ----------
+    // Per-origin cache so a HEAD request isn't repeated for every track.
+    const corsResolved = new Map<string, boolean>()
+    const corsChecking = new Set<string>()
+    function originOf(url: string): string | null {
+      try {
+        return new URL(url, location.href).origin
+      } catch {
+        return null
+      }
+    }
+    function checkCorsAsync(origin: string, sampleUrl: string) {
+      if (corsChecking.has(origin)) return
+      corsChecking.add(origin)
+      fetch(sampleUrl, { method: "HEAD", mode: "cors", cache: "no-store" })
+        .then((res) => {
+          corsResolved.set(
+            origin,
+            res.ok && res.headers.has("access-control-allow-origin"),
+          )
+        })
+        .catch(() => {
+          corsResolved.set(origin, false)
+        })
     }
 
-    function updateVolIcon() {
-      const muted = audio.muted || audio.volume === 0
-      setHidden(volIconOn, muted)
-      setHidden(volIconOff, !muted)
+    let audioCtx: AudioContext | null = null
+    let analyser: AnalyserNode | null = null
+    let freqData: Uint8Array | null = null
+    let sourceNode: MediaElementAudioSourceNode | null = null
+    let analyserFailed = false
+
+    // Only ever wires the graph once per element (createMediaElementSource
+    // throws on a second call), and only once CORS is confirmed for the
+    // track's origin -- otherwise the element is left exactly as it is
+    // today and the simulation drives the visualizer instead.
+    function ensureAudioGraph() {
+      if (sourceNode || analyserFailed) return
+      try {
+        const AC =
+          window.AudioContext || (window as any).webkitAudioContext
+        if (!AC) {
+          analyserFailed = true
+          return
+        }
+        audioCtx = audioCtx || new AC()
+        sourceNode = audioCtx.createMediaElementSource(audio)
+        analyser = audioCtx.createAnalyser()
+        analyser.fftSize = 1024
+        analyser.smoothingTimeConstant = 0.55
+        freqData = new Uint8Array(analyser.frequencyBinCount)
+        sourceNode.connect(analyser)
+        analyser.connect(audioCtx.destination)
+      } catch {
+        analyserFailed = true
+        sourceNode = null
+        analyser = null
+        freqData = null
+      }
+    }
+
+    function prepareAnalyser(url: string) {
+      try {
+        const origin = originOf(url)
+        if (!origin) return
+        checkCorsAsync(origin, url)
+        if (corsResolved.get(origin) === true) {
+          audio.crossOrigin = "anonymous"
+          ensureAudioGraph()
+        }
+      } catch {
+        analyserFailed = true
+      }
+    }
+
+    function resumeAudioContextIfNeeded() {
+      try {
+        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume()
+      } catch {}
     }
 
     function loadTrack(newIndex: number, autoplay = true) {
@@ -390,8 +446,20 @@
         if (track.albumId) drawerAlbum.href = `/albums/${track.albumId}/`
         else drawerAlbum.removeAttribute("href")
       }
+      if (drawerDecal && drawerDecalText) {
+        if (track.bpm != null && track.key) {
+          drawerDecalText.textContent = `${track.bpm} BPM // ${track.key}`
+          drawerDecal.hidden = false
+        } else {
+          drawerDecal.hidden = true
+        }
+      }
+      prepareAnalyser(track.audioUrl)
       audio.src = track.audioUrl
-      if (autoplay) audio.play().catch(() => {})
+      if (autoplay) {
+        resumeAudioContextIfNeeded()
+        audio.play().catch(() => {})
+      }
       playBtn.disabled = false
       seek.disabled = false
       if (drawerPlayBtn) drawerPlayBtn.disabled = false
@@ -402,8 +470,10 @@
 
     function togglePlayback() {
       if (!audio.src) return
-      if (audio.paused) audio.play()
-      else audio.pause()
+      if (audio.paused) {
+        resumeAudioContextIfNeeded()
+        audio.play()
+      } else audio.pause()
     }
 
     let drawerScrollY = 0
@@ -528,19 +598,6 @@
       isSeeking = false
     })
 
-    volume.addEventListener("input", () => {
-      const v = Number(volume.value) / 100
-      audio.volume = v
-      if (audio.muted && v > 0) audio.muted = false
-      setRangeProgress(volume)
-      updateVolIcon()
-    })
-
-    muteBtn.addEventListener("click", () => {
-      audio.muted = !audio.muted
-      updateVolIcon()
-    })
-
     document.addEventListener("player:play", ((event: CustomEvent) => {
       const detail = event.detail
       if (!detail || !Array.isArray(detail.queue)) return
@@ -552,12 +609,171 @@
 
     document.addEventListener("player:query", emitState)
 
-    audio.volume = Number(volume.value) / 100
-    setRangeProgress(volume)
+    audio.volume = 0.8
     syncSeekProgress()
-    updateVolIcon()
     updatePlayIcon()
     updateNav()
+
+    // ---------- step 8: --minih (mini bar height) for page bottom padding ----------
+    function initMinih() {
+      function set() {
+        document.documentElement.style.setProperty(
+          "--minih",
+          bar!.offsetHeight + "px",
+        )
+      }
+      new ResizeObserver(set).observe(bar!)
+      set()
+    }
+    initMinih()
+
+    // ---------- step 8: stage spectrum -- real analyser with a 118 BPM
+    // simulated fallback, matching the home page's About spectrum pattern ----------
+    if (viz) {
+      const ctx = viz.getContext("2d")
+      if (ctx) {
+        const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches
+        const SEG = 6,
+          GAP = 3,
+          BGAP = 4,
+          HOLD_MS = 650,
+          FALL = 2.4,
+          SIM_BPM = 118
+        let W = 0,
+          H = 0,
+          N = 0
+        let lvl: number[] = [],
+          peak: number[] = [],
+          hold: number[] = [],
+          vel: number[] = []
+        const clamp = (v: number, a: number, b: number) =>
+          Math.max(a, Math.min(b, v))
+
+        new ResizeObserver(() => {
+          const r = viz.getBoundingClientRect()
+          const dpr = Math.min(2, devicePixelRatio || 1)
+          W = r.width
+          H = r.height
+          viz.width = Math.round(W * dpr)
+          viz.height = Math.round(H * dpr)
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+          N = clamp(Math.floor((W + BGAP) / (12 + BGAP)), 14, 40)
+          lvl = Array(N).fill(0)
+          peak = Array(N).fill(0)
+          hold = Array(N).fill(0)
+          vel = Array(N).fill(0)
+        }).observe(viz)
+
+        function targets(ts: number) {
+          const out = new Array(N).fill(0)
+          if (audio.paused) {
+            if (!reduce)
+              for (let i = 0; i < N; i++)
+                out[i] = 0.05 + 0.05 * (0.5 + 0.5 * Math.sin(ts / 600 + i * 0.55))
+            return out
+          }
+          if (analyser && freqData && !analyserFailed) {
+            analyser.getByteFrequencyData(freqData)
+            const nyq = (audioCtx?.sampleRate ?? 44100) / 2
+            const bins = freqData.length
+            const f0 = 45,
+              f1 = 9000
+            for (let i = 0; i < N; i++) {
+              const a = f0 * Math.pow(f1 / f0, i / N)
+              const b = f0 * Math.pow(f1 / f0, (i + 1) / N)
+              const lo = Math.floor((a / nyq) * bins)
+              const hi = Math.max(lo + 1, Math.ceil((b / nyq) * bins))
+              let m = 0
+              for (let k = lo; k < hi && k < bins; k++)
+                if (freqData[k] > m) m = freqData[k]
+              out[i] = clamp(Math.pow(m / 255, 1.7) * (1 + (i / N) * 0.35), 0, 1)
+            }
+            return out
+          }
+          // simulated fallback: fixed 118 BPM, phased off currentTime
+          const ph = (audio.currentTime / (60 / SIM_BPM)) % 1
+          for (let i = 0; i < N; i++) {
+            const lowW = 1 - i / N
+            out[i] = clamp(
+              lowW * 0.95 * Math.exp(-ph * 4) +
+                Math.random() * 0.25 * (0.4 + lowW * 0.6) +
+                0.08,
+              0,
+              1,
+            )
+          }
+          return out
+        }
+
+        let last = 0
+        let vis = true
+        let running = false
+
+        function draw(ts: number) {
+          const dt = Math.min(0.05, (ts - last) / 1000 || 0.016)
+          last = ts
+          if (W && N) {
+            const tg = targets(ts)
+            ctx.clearRect(0, 0, W, H)
+            const bw = (W - (N - 1) * BGAP) / N
+            const pitch = SEG + GAP
+            const segs = Math.max(4, Math.floor((H + GAP) / pitch))
+            const litColor = getComputedStyle(document.documentElement)
+              .getPropertyValue("--scarlet")
+              .trim() || "#C0392F"
+            const hotColor = getComputedStyle(document.documentElement)
+              .getPropertyValue("--pop")
+              .trim() || "#E5472F"
+            for (let i = 0; i < N; i++) {
+              lvl[i] = Math.max(tg[i], lvl[i] - dt * 1.7)
+              const L = lvl[i]
+              if (L >= peak[i]) {
+                peak[i] = L
+                hold[i] = HOLD_MS
+                vel[i] = 0
+              } else if (hold[i] > 0) {
+                hold[i] -= dt * 1000
+              } else {
+                vel[i] += FALL * dt
+                peak[i] = Math.max(L, peak[i] - vel[i] * dt)
+              }
+              const x = i * (bw + BGAP)
+              const lit = Math.round(L * segs)
+              const cap = Math.min(segs - 1, Math.max(0, Math.round(peak[i] * segs) - 1))
+              for (let s = 0; s < segs; s++) {
+                const y = H - (s + 1) * pitch + GAP
+                ctx.fillStyle =
+                  s < lit
+                    ? s / segs > 0.84
+                      ? hotColor
+                      : litColor
+                    : "rgba(239,230,204,.07)"
+                ctx.fillRect(x, y, bw, SEG)
+              }
+              if (peak[i] > 0.04) {
+                ctx.fillStyle = "#EFE6CC"
+                ctx.fillRect(x, H - (cap + 1) * pitch + GAP, bw, SEG)
+              }
+            }
+          }
+          if (!reduce && vis) requestAnimationFrame(draw)
+          else running = false
+        }
+        function kick() {
+          if (!running && !reduce) {
+            running = true
+            requestAnimationFrame(draw)
+          }
+        }
+        new IntersectionObserver((entries) => {
+          vis = entries[0].isIntersecting
+          if (vis) kick()
+        }).observe(drawer ?? viz)
+        if (reduce) {
+          for (let k = 0; k < 40; k++) draw(performance.now() + k * 40)
+        }
+      }
+    }
   }
 
   document.addEventListener("astro:page-load", initPlayerBar)
@@ -601,26 +817,28 @@
   .progress-fill {
     height: 100%;
     width: 0%;
-    background: var(--dusk);
+    background: var(--pop);
   }
   .player-inner {
     max-width: 1080px;
     height: 100%;
     margin: 0 auto;
     padding: 0 24px;
-    display: grid;
-    grid-template-columns: 1fr minmax(300px, 722px) 1fr;
+    display: flex;
     align-items: center;
-    gap: 28px;
+    justify-content: space-between;
+    gap: 24px;
   }
 
   .np {
     min-width: 0;
+    flex: 1;
   }
   .np-title {
-    font-family: var(--font-body);
-    font-size: 0.88rem;
+    font-family: var(--font-display);
     font-weight: 600;
+    letter-spacing: 0.01em;
+    font-size: 0.92rem;
     color: var(--bone);
     white-space: nowrap;
     overflow: hidden;
@@ -630,22 +848,24 @@
     display: block;
     font-family: var(--font-mono);
     font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: var(--ash);
     text-decoration: none;
-    margin-top: 2px;
+    margin-top: 3px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     transition: color 0.15s;
   }
   .np-album[href]:hover {
-    color: var(--flare);
+    color: var(--pop);
     text-decoration: underline;
   }
 
   .transport {
     justify-self: center;
-    width: 100%;
+    flex: none;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -654,12 +874,12 @@
   .controls {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
   }
   .tbtn {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    border-radius: 0;
     border: 1px solid var(--line);
     background: transparent;
     color: var(--ash);
@@ -671,6 +891,7 @@
     transition:
       color 0.15s,
       border-color 0.15s,
+      background-color 0.15s,
       transform 0.08s;
   }
   .tbtn:hover:not(:disabled) {
@@ -678,23 +899,21 @@
     border-color: var(--ash-dim);
   }
   .tbtn:active:not(:disabled) {
-    transform: scale(0.9);
+    transform: scale(0.92);
   }
   .tbtn:disabled {
     opacity: 0.4;
     cursor: default;
   }
   .tbtn.play {
-    width: 36px;
-    height: 36px;
-    background: var(--bone);
-    border-color: var(--bone);
-    color: var(--void);
+    width: 38px;
+    height: 38px;
+    background: var(--pop);
+    border-color: transparent;
+    color: var(--bone);
   }
   .tbtn.play:hover:not(:disabled) {
-    background: var(--flare);
-    border-color: var(--flare);
-    color: var(--void);
+    background: var(--scarlet);
   }
   .tbtn.play:disabled {
     background: var(--ash-dim);
@@ -773,14 +992,14 @@
     -webkit-appearance: none;
     appearance: none;
     flex: 1;
-    height: 3px;
-    border-radius: 2px;
+    height: 6px;
+    border-radius: 0;
     background: linear-gradient(
       to right,
-      var(--dusk) 0%,
-      var(--dusk) var(--progress, 0%),
-      var(--line) var(--progress, 0%),
-      var(--line) 100%
+      var(--pop) 0%,
+      var(--pop) var(--progress, 0%),
+      rgba(239, 230, 204, 0.2) var(--progress, 0%),
+      rgba(239, 230, 204, 0.2) 100%
     );
     cursor: pointer;
   }
@@ -791,76 +1010,28 @@
   .range::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 11px;
-    height: 11px;
-    border-radius: 50%;
+    width: 10px;
+    height: 18px;
+    border-radius: 0;
     background: var(--bone);
     border: none;
-    margin-top: 0;
+    box-shadow: 0 0 0 2px var(--void);
+    margin-top: -6px;
   }
   .range::-moz-range-thumb {
-    width: 11px;
-    height: 11px;
-    border-radius: 50%;
+    width: 10px;
+    height: 18px;
+    border-radius: 0;
     background: var(--bone);
     border: none;
+    box-shadow: 0 0 0 2px var(--void);
   }
   .range::-moz-range-track {
-    height: 3px;
+    height: 6px;
     background: transparent;
   }
-  .scrub:hover .range::-webkit-slider-thumb {
-    background: var(--flare);
-  }
-  .scrub:hover .range::-moz-range-thumb {
-    background: var(--flare);
-  }
 
-  .vol {
-    justify-self: end;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 9px;
-  }
-  .mute-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    padding: 0;
-    color: var(--ash);
-    cursor: pointer;
-    transition: color 0.15s;
-  }
-  .mute-btn:hover {
-    color: var(--bone);
-  }
-  .ic-vol {
-    width: 17px;
-    height: 17px;
-    display: block;
-    color: inherit;
-  }
-  .ic-vol[hidden] {
-    display: none;
-  }
-  .vol .range.volume {
-    width: 90px;
-    flex: none;
-  }
-  .vol:hover .range::-webkit-slider-thumb {
-    background: var(--flare);
-  }
-  .vol:hover .range::-moz-range-thumb {
-    background: var(--flare);
-  }
-
-  @media (max-width: 680px) {
-    .vol {
-      display: none;
-    }
+  @media (max-width: 979px) {
     .scrub {
       display: none;
     }
@@ -872,93 +1043,169 @@
       display: block;
     }
     .player-inner {
-      grid-template-columns: 1fr auto;
-      gap: 14px;
+      padding: 0 16px;
     }
     .np {
       cursor: pointer;
     }
+    .tbtn.play {
+      width: 48px;
+      height: 48px;
+    }
+    .player-bar {
+      padding-bottom: 16px;
+    }
   }
 
-  /* Full-screen now-playing drawer -- mobile only. The mini-bar above
-     680px already shows every control inline, so the drawer never
-     renders there regardless of its .open state. */
+  /* ---- full-screen "now playing" stage -- mobile only; the mini bar
+     above 980px already shows every control inline ---- */
   .player-drawer {
     position: fixed;
-    inset: 0;
+    left: 0;
+    right: 0;
+    top: var(--navh);
+    height: calc(100dvh - var(--navh));
     z-index: 70;
     display: none;
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;
     background: var(--void);
-    padding: 20px 24px 40px;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overflow-x: hidden;
   }
   .player-drawer.open {
     display: flex;
   }
+  .drawer-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
   .drawer-close {
-    align-self: flex-start;
-    width: 36px;
-    height: 36px;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    border-radius: 0;
+    border: 1px solid var(--line);
     display: flex;
     align-items: center;
     justify-content: center;
     background: transparent;
-    border: none;
     color: var(--bone);
     cursor: pointer;
     padding: 0;
   }
-  .ic-chevron-down {
-    width: 12px;
-    height: 12px;
-    display: block;
-    border-right: 2px solid currentColor;
-    border-bottom: 2px solid currentColor;
-    transform: rotate(45deg) translateY(-2px);
+  .drawer-close svg {
+    width: 18px;
+    height: 18px;
+  }
+  .drawer-chip {
+    font: 600 13px/1 var(--font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--bone);
   }
   .drawer-content {
     flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    width: 100%;
-    max-width: 420px;
-    margin: 0 auto;
-  }
-  .drawer-art {
-    width: 100%;
-    aspect-ratio: 1;
-    object-fit: cover;
-    border-radius: 4px;
-    margin-bottom: 32px;
+    gap: 16px;
   }
   .drawer-meta {
     width: 100%;
     text-align: left;
-    margin-bottom: 36px;
   }
   .drawer-title {
-    font-family: var(--font-body);
-    font-size: 1.15rem;
-    font-weight: 600;
+    font: 700 clamp(28px, 9vw, 48px) / 1 var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: -0.005em;
     color: var(--bone);
+    text-shadow:
+      0 0 0.55em var(--glow-soft),
+      0 0 0.08em rgba(34, 211, 238, 0.5);
+    overflow-wrap: anywhere;
   }
   .drawer-album {
     display: block;
-    margin-top: 6px;
+    margin-top: 8px;
     font-family: var(--font-mono);
     font-size: 0.82rem;
     color: var(--ash);
     text-decoration: none;
   }
   .drawer-album[href]:hover {
-    color: var(--flare);
+    color: var(--pop);
     text-decoration: underline;
+  }
+  .drawer-viz-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 160px;
+  }
+  #player-viz {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .drawer-decal {
+    position: absolute;
+    right: -4px;
+    top: -6px;
+    transform: rotate(-3deg);
+    width: 130px;
+    padding: 7px 10px 10px;
+    background: var(--hazard);
+    color: var(--void);
+    clip-path: polygon(
+      0 0,
+      calc(100% - 12px) 0,
+      100% 12px,
+      100% 100%,
+      12px 100%,
+      0 calc(100% - 12px)
+    );
+    pointer-events: none;
+  }
+  .drawer-decal[hidden] {
+    display: none;
+  }
+  .drawer-decal b {
+    display: block;
+    font: 700 16px/1 var(--font-display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .drawer-decal span {
+    display: block;
+    margin-top: 3px;
+    font: 500 11px/1.2 var(--font-mono);
+    letter-spacing: 0.04em;
+  }
+  .drawer-decal i {
+    display: block;
+    margin-top: 5px;
+    height: 5px;
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--void) 0 5px,
+      transparent 5px 10px
+    );
+  }
+  .drawer-hazard {
+    height: 7px;
+    opacity: 0.5;
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--hazard) 0 8px,
+      transparent 8px 16px
+    );
   }
   .drawer-scrub {
     width: 100%;
-    margin-bottom: 14px;
   }
   .drawer-scrub .range {
     width: 100%;
@@ -982,15 +1229,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 28px;
+    gap: 24px;
   }
   .drawer-controls .tbtn {
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
   }
   .drawer-controls .tbtn.play {
-    width: 56px;
-    height: 56px;
+    width: 60px;
+    height: 60px;
   }
   .drawer-controls .ic-play {
     border-width: 8px 0 8px 13px;
@@ -1011,9 +1258,15 @@
     height: 14px;
   }
 
-  @media (min-width: 681px) {
+  @media (min-width: 980px) {
     .player-drawer {
       display: none !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .player-bar {
+      transition: none;
     }
   }
 </style>
