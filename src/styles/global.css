@@ -66,7 +66,7 @@ body {
   color: var(--bone);
   font-family: var(--font-body);
   font-size: 16px;
-  line-height: 1.6;
+  line-height: 1.4;
   position: relative;
   overflow-x: hidden;
   transition: padding-bottom 0.2s ease;
@@ -269,6 +269,14 @@ h3 {
   color: var(--cf);
   clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
   box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.18);
+}
+/* Row discs are fixed-size regardless of breakpoint, matching the POC's
+   own .rowbtn .disc override -- only the mini player's disc (sized
+   separately below) scales down. */
+.rowbtn .disc {
+  --disc: 56px;
+  width: 56px;
+  height: 56px;
 }
 .disc .yr {
   font: 700 16px/1 var(--font-display);

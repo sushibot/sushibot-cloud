@@ -3,7 +3,7 @@ import Layout from "../../layouts/Layout.astro"
 import Nav from "../../components/Nav.astro"
 import { getCollection } from "astro:content"
 import type { CollectionEntry } from "astro:content"
-import { eraOf } from "../../lib/archive"
+import { eraOf, displayTrackNumber } from "../../lib/archive"
 
 export async function getStaticPaths() {
   const albums = await getCollection("albums")
@@ -91,7 +91,7 @@ const metaText = metaParts.join(" · ")
                 const displayTitle = track.data.displayTitle ?? track.data.title
                 const hasAudio = !!track.data.audioUrl
                 const label = `${displayTitle}${track.data.bpm != null ? `, ${track.data.bpm} BPM` : ""}`
-                const num = String(track.data.trackNumber).padStart(2, "0")
+                const num = String(displayTrackNumber(track, i)).padStart(2, "0")
                 return (
                   <li class="row" data-i={i} data-era={era.token}>
                     <div class="rowx">
@@ -168,8 +168,9 @@ const metaText = metaParts.join(" · ")
     id="album-queue"
     set:html={JSON.stringify(
       tracks
-        .filter((track) => track.data.audioUrl)
-        .map((track) => ({
+        .map((track, i) => ({ track, i }))
+        .filter(({ track }) => track.data.audioUrl)
+        .map(({ track, i }) => ({
           id: track.id.split("/").pop(),
           title: track.data.displayTitle ?? track.data.title,
           album: album.data.title,
@@ -177,9 +178,9 @@ const metaText = metaParts.join(" · ")
           audioUrl: track.data.audioUrl,
           bpm: track.data.bpm,
           key: track.data.key,
-          code: `A${String(albumIndex + 1).padStart(2, "0")}-T${String(track.data.trackNumber).padStart(2, "0")}`,
+          code: `A${String(albumIndex + 1).padStart(2, "0")}-T${String(displayTrackNumber(track, i)).padStart(2, "0")}`,
           year,
-          trackNum: track.data.trackNumber,
+          trackNum: displayTrackNumber(track, i),
           trackTotal: tracks.length,
           eraBg: era.bg,
           eraFg: era.fg,
@@ -311,7 +312,7 @@ const metaText = metaParts.join(" · ")
   .thead {
     display: grid;
     gap: 6px;
-    padding: 24px 16px 12px;
+    padding: 0 16px 12px;
   }
   .thead h2 {
     margin: 0;

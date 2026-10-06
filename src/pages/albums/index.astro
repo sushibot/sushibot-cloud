@@ -3,7 +3,7 @@ import Layout from "../../layouts/Layout.astro"
 import Nav from "../../components/Nav.astro"
 import { getCollection } from "astro:content"
 import type { CollectionEntry } from "astro:content"
-import { eraOf } from "../../lib/archive"
+import { eraOf, displayTrackNumber } from "../../lib/archive"
 
 const albumEntries = await getCollection("albums")
 const allTracks = await getCollection("tracks", ({ data }) => data.display)
@@ -83,7 +83,7 @@ const rail = eraOrder
                       data-year={year}
                       data-era-bg={era.bg}
                       data-era-fg={era.fg}
-                      data-code={`A${String(i + 1).padStart(2, "0")}-T${String(track?.data.trackNumber ?? 1).padStart(2, "0")}`}
+                      data-code={`A${String(i + 1).padStart(2, "0")}-T${String(track ? displayTrackNumber(track, 0) : 1).padStart(2, "0")}`}
                     >
                       <span class="disc" style={discStyle}>
                         <span class="yr">{year}</span>

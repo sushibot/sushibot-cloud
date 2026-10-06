@@ -51,3 +51,22 @@ assert.strictEqual(eraOf(2012).token, "--era-2012")
 assert.strictEqual(eraOf(2017).token, "--era-2015")
 assert.strictEqual(eraOf(2025).token, "--era-2024", "the latest years must resolve to the last era")
 assert.strictEqual(eraOf(2026).token, "--era-2024")
+
+/** The track-position number shown to a visitor (row disc, stage "T0n"
+ * code, "track n of N" subline). Sequential 1..N across the album's
+ * displayed tracks, not each file's own stored trackNumber -- a deleted
+ * or display:false track leaves a gap in the stored numbering that
+ * reads as a bug to a visitor, not as the real sequence. `index` is the
+ * track's 0-based position in the album's trackNumber-sorted,
+ * already-display-filtered track list (the same `i` the row-rendering
+ * loop already has).
+ *
+ * This is the only place that needs to change to go back to each
+ * file's own stored number -- swap which return line is active. */
+export function displayTrackNumber(
+  track: CollectionEntry<"tracks">,
+  index: number,
+): number {
+  return index + 1
+  // return track.data.trackNumber
+}
