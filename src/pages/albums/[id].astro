@@ -168,12 +168,22 @@ const tracks = (
     function isMobile() {
       return window.matchMedia("(max-width: 680px)").matches
     }
+    // Same breakpoint the POC's desk.matches uses for "play also opens
+    // the stage" -- distinct from isMobile() above, which only governs
+    // the tap-anywhere-vs-hover-icon row interaction.
+    const deskMql = window.matchMedia("(min-width: 980px)")
 
     function playRow(row: HTMLLIElement) {
       const link = row.querySelector<HTMLAnchorElement>(".track-play")
       if (!link) return
       if (link.dataset.audioUrl === activeAudioUrl) {
-        document.dispatchEvent(new CustomEvent("player:toggle"))
+        // Desktop: re-picking the already-playing row opens the stage,
+        // no restart/toggle. Phones: unchanged, toggles play/pause.
+        if (deskMql.matches) {
+          document.dispatchEvent(new CustomEvent("player:open-stage"))
+        } else {
+          document.dispatchEvent(new CustomEvent("player:toggle"))
+        }
         return
       }
       const index = Number(link.dataset.index)
@@ -184,7 +194,9 @@ const tracks = (
         history.replaceState(null, "", url)
       }
       document.dispatchEvent(
-        new CustomEvent("player:play", { detail: { queue, index } }),
+        new CustomEvent("player:play", {
+          detail: { queue, index, openStage: deskMql.matches },
+        }),
       )
     }
 

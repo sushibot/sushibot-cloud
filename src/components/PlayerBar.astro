@@ -20,7 +20,9 @@
 
   <div class="player-inner">
     <div class="np" id="np">
-      <div class="np-title" id="np-title"></div>
+      <button class="np-open" id="np-open" type="button" aria-label="Open player">
+        <span class="np-title" id="np-title"></span>
+      </button>
       <a class="np-album" id="np-album"></a>
     </div>
 
@@ -70,6 +72,19 @@
         <span class="time now" id="tot-time">0:00</span>
       </div>
     </div>
+
+    <button class="expand-btn" id="expand-btn" type="button" aria-label="Open player">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.4"
+        stroke-linecap="square"
+        aria-hidden="true"
+      >
+        <path d="M6 15l6-6 6 6" />
+      </svg>
+    </button>
   </div>
 </div>
 
@@ -204,6 +219,16 @@
       "progress-fill",
     ) as HTMLDivElement
     const npEl = document.getElementById("np") as HTMLDivElement
+    // New: explicit "open player" affordances for desktop -- a real
+    // button wrapping the title (keyboard accessible), and a separate
+    // visible expand control.
+    const npOpenBtn = document.getElementById(
+      "np-open",
+    ) as HTMLButtonElement | null
+    const expandBtn = document.getElementById(
+      "expand-btn",
+    ) as HTMLButtonElement | null
+    const deskMql = matchMedia("(min-width: 980px)")
 
     // Drawer elements are mobile-only UI; guard each use individually
     // rather than bailing out of the whole player if one is missing.
@@ -477,12 +502,29 @@
     }
 
     let drawerScrollY = 0
+    // Tracks whatever had focus when the stage opened (a row on an
+    // album page, the mini bar's open button, etc.) so focus can return
+    // to it on close, matching the POC's open/close focus contract.
+    let openerEl: HTMLElement | null = null
+
+    // While the stage is open, everything else on the page (nav, main
+    // content, the mini bar itself) becomes inert -- #player-drawer is
+    // always one of body's direct children (it's transition:persist),
+    // so this only ever needs to look at body's immediate children.
+    function setBehindStageInert(isOpen: boolean) {
+      if (!drawer) return
+      for (const el of Array.from(document.body.children)) {
+        if (el === drawer) continue
+        ;(el as HTMLElement).inert = isOpen
+      }
+    }
 
     // overflow:hidden on body doesn't reliably block touch-scrolling on
     // iOS Safari -- pin body in place at its current scroll offset and
     // restore the real scroll position on close instead.
     function openDrawer() {
-      if (!drawer) return
+      if (!drawer || drawer.classList.contains("open")) return
+      openerEl = document.activeElement as HTMLElement | null
       drawerScrollY = window.scrollY
       document.body.style.position = "fixed"
       document.body.style.top = `-${drawerScrollY}px`
@@ -490,10 +532,12 @@
       document.body.style.right = "0"
       drawer.classList.add("open")
       drawer.setAttribute("aria-hidden", "false")
+      setBehindStageInert(true)
+      drawerPlayBtn?.focus({ preventScroll: true })
     }
 
     function closeDrawer() {
-      if (!drawer) return
+      if (!drawer || !drawer.classList.contains("open")) return
       drawer.classList.remove("open")
       drawer.setAttribute("aria-hidden", "true")
       document.body.style.position = ""
@@ -501,19 +545,30 @@
       document.body.style.left = ""
       document.body.style.right = ""
       window.scrollTo(0, drawerScrollY)
+      setBehindStageInert(false)
+      ;(openerEl ?? npOpenBtn)?.focus({ preventScroll: true })
+      openerEl = null
     }
 
     playBtn.addEventListener("click", togglePlayback)
     drawerPlayBtn?.addEventListener("click", togglePlayback)
 
-    npEl.addEventListener("click", (event) => {
-      const target = event.target as HTMLElement | null
-      if (target?.closest(".np-album")) return
+    npOpenBtn?.addEventListener("click", () => {
+      if (!audio.src) return
+      openDrawer()
+    })
+    expandBtn?.addEventListener("click", () => {
       if (!audio.src) return
       openDrawer()
     })
 
     drawerCloseBtn?.addEventListener("click", closeDrawer)
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return
+      if (!drawer?.classList.contains("open")) return
+      closeDrawer()
+    })
 
     document.addEventListener("keydown", (event) => {
       if (event.code !== "Space" && event.key !== " ") return
@@ -603,9 +658,22 @@
       if (!detail || !Array.isArray(detail.queue)) return
       queue = detail.queue
       loadTrack(detail.index ?? 0, detail.autoplay ?? true)
+      // Desktop (>=980px): picking a track from a row also opens the
+      // stage, matching the POC's playFromUser. Re-checked here (not
+      // just trusted from the dispatcher) so the stage never auto-opens
+      // on a narrow viewport regardless of what a caller requests.
+      if (detail.openStage && deskMql.matches) openDrawer()
     }) as EventListener)
 
     document.addEventListener("player:toggle", togglePlayback)
+
+    // Re-clicking the row of the track that's already playing opens the
+    // stage without restarting or toggling playback (desktop only --
+    // dispatchers are expected to send player:toggle instead on mobile).
+    document.addEventListener("player:open-stage", () => {
+      if (!audio.src) return
+      openDrawer()
+    })
 
     document.addEventListener("player:query", emitState)
 
@@ -833,8 +901,24 @@
   .np {
     min-width: 0;
     flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .np-open {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
   }
   .np-title {
+    display: block;
     font-family: var(--font-display);
     font-weight: 600;
     letter-spacing: 0.01em;
@@ -919,6 +1003,39 @@
     background: var(--ash-dim);
     border-color: var(--ash-dim);
     opacity: 1;
+  }
+
+  /* visible "open the stage" control -- desktop only; on phones the
+     mini bar's whole track-info area already opens it */
+  .expand-btn {
+    display: none;
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 0;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ash);
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .expand-btn:hover {
+    color: var(--bone);
+    border-color: var(--ash-dim);
+  }
+  .expand-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+  @media (min-width: 980px) {
+    .expand-btn {
+      display: flex;
+    }
   }
 
   .ic-play {
@@ -1045,9 +1162,6 @@
     .player-inner {
       padding: 0 16px;
     }
-    .np {
-      cursor: pointer;
-    }
     .tbtn.play {
       width: 48px;
       height: 48px;
@@ -1057,8 +1171,10 @@
     }
   }
 
-  /* ---- full-screen "now playing" stage -- mobile only; the mini bar
-     above 980px already shows every control inline ---- */
+  /* ---- full-screen "now playing" stage -- opens from the mini bar on
+     any screen size; on desktop a track row also opens it directly on
+     play (see player:play's openStage handling). Sits below the sticky
+     nav (top: var(--navh)) so the nav stays visible, matching the POC. ---- */
   .player-drawer {
     position: fixed;
     left: 0;
@@ -1260,7 +1376,14 @@
 
   @media (min-width: 980px) {
     .player-drawer {
-      display: none !important;
+      padding: 20px 32px 28px;
+    }
+    .drawer-title {
+      font-size: clamp(52px, 6vw, 92px);
+    }
+    .drawer-decal {
+      right: 12px;
+      top: 10px;
     }
   }
 
