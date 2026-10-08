@@ -151,7 +151,39 @@ checklist.)
 
 ## Step 9b — phone/desktop test fixes (3 bugs)
 
-**Status: pending independent review.**
+**Status: reviewed — APPROVE WITH NOTES. Pushed to staging. Awaiting
+user's phone/desktop test before step 10.**
+
+### Independent review (fresh subagent, diff only)
+Verdict: **APPROVE WITH NOTES**. Reviewer traced the module-scope
+refactor's correctness by hand (no use-before-init, no stale closures),
+specifically checked whether the `document.contains(audio)` guard could
+ever swallow a real user pause (it can't -- walked the scenario), and
+confirmed the two defenses against the resume race (the `contains`
+guard and the `resumeIndex`/`resumePlaying`/`resumeTime` snapshot)
+aren't redundant -- they cover two different moments. Confirmed the bar
+markup has no leftover interactive seek input and the stage's own seek
+bar is untouched. One note: their own WebKit run in their sandbox was
+inconsistent (one failure on the triple-navigation test, and on a
+noisier run, broader failures with `currentTime` never advancing at
+all) and they recommended a re-run on a clean machine, flagging it as
+probably sandbox resource contention but not certain.
+
+Followed up on that note directly: reran the suite repeatedly after a
+cooldown. The specific triple-navigation test the reviewer flagged
+passed every time. But a broader symptom reappeared -- `currentTime`
+stuck at 0 (not advancing at all) -- and chasing it found the real
+cause: by this point in the session, several hundred real HTTP
+requests had gone out today to the live R2 bucket this site streams
+from (every manual test run hits the actual production audio files,
+there's no mock). A control test confirmed it: the *exact* symptom
+(play() succeeds, `paused` goes false, but `currentTime` never leaves
+0) reproduced identically in **both** Chrome and WebKit, on a
+completely different track/album, including a plain direct page load
+with no navigation at all -- scenarios that had been rock-solid all
+session. Two engines with unrelated persistence architectures failing
+identically rules out an app-code cause; it's the live file fetch
+itself stalling, not a code path. Not something fixable in this repo.
 
 1. **Fixed**: the FIRST play of a fresh session stopped on the next
    navigation in WebKit (later plays were unaffected). Root cause, found by
