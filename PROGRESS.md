@@ -148,3 +148,56 @@ checklist.)
 - No decision requested this round on track numbering — sequential
   display is implemented per the standing lean toward option (b);
   flag if you want this reverted.
+
+## Step 9b — phone/desktop test fixes (3 bugs)
+
+**Status: pending independent review.**
+
+1. **Fixed**: the FIRST play of a fresh session stopped on the next
+   navigation in WebKit (later plays were unaffected). Root cause, found by
+   instrumenting every audio event and the DOM directly (not guessed):
+   `#player-audio` had its own `transition:persist`, nested inside the
+   already-persisted `#player-bar` -- the parent kept itself fine, but the
+   doubly-persisted child was dropped by Astro's WebKit fallback swap
+   (no `Element.moveBefore()` there) instead of staying in place.
+
+   First fix attempt was just removing the audio element's own persist
+   directive. That fixed WebKit but broke Chrome: without its own persist,
+   Astro's morph started resetting the live element's `src` on ordinary
+   navigations there (confirmed by reverting to the pre-session baseline
+   and reproducing the working behavior, then re-applying only the removal
+   -- this was a real regression, not a pre-existing issue). Neither
+   engine's failure mode changes `#player-bar`'s own `dataset.initialized`
+   flag, so a fix gated on that flag can't catch either case.
+
+   Real fix: `<audio>` keeps its `transition:persist` (restores Chrome's
+   original, flawless behavior). Playback state (queue, index, elapsed
+   time, playing-ness) and every function that reads or writes `audio` now
+   live at module scope instead of inside the per-bar setup closure, so
+   `initPlayerBar()` can detect a replaced element on *any* navigation, in
+   either engine, re-attach its listeners, and resume -- regardless of why
+   the old node went away. Two related races surfaced and got fixed along
+   the way: `lastKnownPlaying` was only updated by the `play`/`pause`
+   *events*, which lag the synchronous `.paused` flip (a nav landing in
+   that gap resumed as paused); and a browser auto-pauses a disconnected
+   `<audio>` element, which fired that same `pause` listener and overwrote
+   the "should resume" signal moments before the next page could read it.
+   Both fixed by sourcing the playing-state signal from multiple places
+   (the call site, `timeupdate`) and ignoring `pause` events from an
+   element no longer in the document.
+
+   Net effect: all 5 WebKit failures that were already present in the
+   baseline *before this session touched anything* (reported in an earlier
+   round as a known, accepted limitation) are now also fixed, as a side
+   effect of no longer depending on single-node identity. Full suite is
+   28/28 in both Chrome and WebKit. Added a regression test
+   (`player-test.mjs`: "fresh session: first play survives the first
+   navigation").
+2. **Fixed**: the desktop bar's transport overflowed the bar and sat
+   stacked/right-aligned. Rebuilt as one vertically-centered row ([track
+   info] [prev/play/next] [times + progress, flex:1] [expand]), bar height
+   76px. The bar's progress display (desktop and mobile) is now read-only
+   (`role="progressbar"`, `aria-valuenow`, `pointer-events: none`) --
+   scrubbing exists only in the full-screen stage's seek bar (unchanged,
+   still the 44px hit area).
+3. **Fixed — intentional POC deviation**: a track row click only plays/toggles, never auto-opens the stage; the stage opens only via the bar's info area, expand button, or the mobile mini bar.

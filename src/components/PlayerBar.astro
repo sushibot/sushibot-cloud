@@ -7,14 +7,28 @@
   transition:persist
   transition:name="player-bar"
 >
-  <audio
-    id="player-audio"
-    preload="none"
-    transition:persist
-    transition:name="player-audio"
-  ></audio>
+  <!-- No transition:persist here on purpose -- #player-bar above already
+       carries its whole subtree (including this element) across a
+       navigation as one kept node. Giving the audio element its OWN
+       transition:persist too (a child doubly persisted inside an
+       already-persisted parent) is what was silently dropping it on
+       the first navigation of a session in WebKit: the bar persisted
+       fine, but the nested persist directive on the audio element made
+       Astro try to move IT independently, and that move lost the node
+       instead of leaving it in place. See the resume-on-init fallback
+       in the client script below for the belt-and-suspenders case
+       where the bar itself fails to persist for some other reason. -->
+  <audio id="player-audio" preload="none"></audio>
 
-  <div class="progress-border" id="progress-border" aria-hidden="true">
+  <div
+    class="progress-border"
+    id="progress-border"
+    role="progressbar"
+    aria-label="Playback progress"
+    aria-valuemin="0"
+    aria-valuemax="100"
+    aria-valuenow="0"
+  >
     <div class="progress-fill" id="progress-fill"></div>
   </div>
 
@@ -26,51 +40,53 @@
       <a class="np-album" id="np-album"></a>
     </div>
 
-    <div class="transport">
-      <div class="controls">
-        <button
-          class="tbtn"
-          id="prev-btn"
-          type="button"
-          aria-label="Previous track"
-          disabled
-        >
-          <span class="ic-skip prev"></span>
-        </button>
-        <button
-          class="tbtn play"
-          id="play-btn"
-          type="button"
-          aria-label="Play"
-          disabled
-        >
-          <span class="ic-play" id="play-icon"></span>
-        </button>
-        <button
-          class="tbtn"
-          id="next-btn"
-          type="button"
-          aria-label="Next track"
-          disabled
-        >
-          <span class="ic-skip"></span>
-        </button>
+    <div class="controls">
+      <button
+        class="tbtn"
+        id="prev-btn"
+        type="button"
+        aria-label="Previous track"
+        disabled
+      >
+        <span class="ic-skip prev"></span>
+      </button>
+      <button
+        class="tbtn play"
+        id="play-btn"
+        type="button"
+        aria-label="Play"
+        disabled
+      >
+        <span class="ic-play" id="play-icon"></span>
+      </button>
+      <button
+        class="tbtn"
+        id="next-btn"
+        type="button"
+        aria-label="Next track"
+        disabled
+      >
+        <span class="ic-skip"></span>
+      </button>
+    </div>
+
+    <!-- Display only -- the bar shows playback position, it doesn't
+         scrub it. Dragging/seeking lives only in the full-screen stage
+         (#drawer-seek, a real range input with a 44px hit area). -->
+    <div class="progress-row">
+      <span class="time" id="cur-time">0:00</span>
+      <div
+        class="bar-progress"
+        id="bar-progress"
+        role="progressbar"
+        aria-label="Playback progress"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+      >
+        <div class="bar-progress-fill" id="bar-progress-fill"></div>
       </div>
-      <div class="scrub">
-        <span class="time" id="cur-time">0:00</span>
-        <input
-          class="range seek"
-          id="seek"
-          type="range"
-          min="0"
-          max="1000"
-          value="0"
-          step="1"
-          aria-label="Seek"
-          disabled
-        />
-        <span class="time now" id="tot-time">0:00</span>
-      </div>
+      <span class="time now" id="tot-time">0:00</span>
     </div>
 
     <button class="expand-btn" id="expand-btn" type="button" aria-label="Open player">
@@ -243,90 +259,468 @@
     return `<svg class="bars" viewBox="0 0 ${len} ${height}" width="${len}" height="${height}" aria-hidden="true" fill="currentColor">${out}</svg>`
   }
 
+  type QueueTrack = {
+    title: string
+    album?: string
+    albumId?: string
+    audioUrl: string
+    // optional: not sent by any dispatcher yet (no track in the
+    // content collection has bpm/key set), but the stage's decal
+    // reads them if present -- never invented when absent.
+    bpm?: number
+    key?: string
+    // optional stage furniture, all precomputed by the dispatcher
+    // (it has the album/track index and era data already, at build
+    // time) rather than looked up here -- absent fields just leave
+    // that piece of the subline/code off instead of inventing it.
+    code?: string // "A06-T02" style
+    year?: number
+    trackNum?: number
+    trackTotal?: number
+    eraBg?: string // e.g. "var(--era-2012)"
+    eraFg?: string
+  }
+
+  // ---------- module scope, not inside initPlayerBar() ----------
+  // #player-bar's own transition:persist reliably keeps the bar itself
+  // (and ordinary children like the buttons and title) across a
+  // navigation. The nested <audio>, which also carries its own
+  // transition:persist, is a different story: WebKit doesn't implement
+  // Element.moveBefore(), so Astro's fallback swap there can drop a
+  // doubly-persisted descendant even though the parent survives --
+  // most reliably on a session's first navigation. Separately, even in
+  // engines where the node itself survives, a child that changes
+  // identity for any other reason (we've seen it after a few
+  // navigations in Chrome too) would otherwise silently lose its
+  // attached listeners.
+  //
+  // The fix is to stop depending on any single <audio> node staying
+  // alive: playback state (queue/index/elapsed time/playing-ness) and
+  // every function that touches audio all live at module scope, so
+  // initPlayerBar() can detect a replaced element on any navigation,
+  // re-attach its listeners, and resume exactly where it left off --
+  // regardless of why the old node went away.
+  let queue: QueueTrack[] = []
+  let index = -1
+  let lastKnownTime = 0
+  let lastKnownPlaying = false
+  let isSeeking = false
+
+  let audio: HTMLAudioElement | null = null
+  let knownAudio: HTMLAudioElement | null = null
+  let bar: HTMLElement | null = null
+  let playBtn: HTMLButtonElement | null = null
+  let playIcon: HTMLSpanElement | null = null
+  let prevBtn: HTMLButtonElement | null = null
+  let nextBtn: HTMLButtonElement | null = null
+  let barProgress: HTMLDivElement | null = null
+  let barProgressFill: HTMLDivElement | null = null
+  let curTimeEl: HTMLSpanElement | null = null
+  let totTimeEl: HTMLSpanElement | null = null
+  let npTitle: HTMLDivElement | null = null
+  let npAlbum: HTMLAnchorElement | null = null
+  let progressFill: HTMLDivElement | null = null
+  let progressBorder: HTMLDivElement | null = null
+  let npEl: HTMLDivElement | null = null
+  let npOpenBtn: HTMLButtonElement | null = null
+  let expandBtn: HTMLButtonElement | null = null
+  let drawer: HTMLDivElement | null = null
+  let drawerCloseBtn: HTMLButtonElement | null = null
+  let drawerTitle: HTMLDivElement | null = null
+  let drawerSub: HTMLParagraphElement | null = null
+  let drawerBarcode: HTMLSpanElement | null = null
+  let drawerCode: HTMLSpanElement | null = null
+  let drawerSeek: HTMLInputElement | null = null
+  let drawerCurTime: HTMLSpanElement | null = null
+  let drawerTotTime: HTMLSpanElement | null = null
+  let drawerPrevBtn: HTMLButtonElement | null = null
+  let drawerNextBtn: HTMLButtonElement | null = null
+  let drawerPlayBtn: HTMLButtonElement | null = null
+  let drawerPlayIcon: HTMLSpanElement | null = null
+  let drawerDecal: HTMLDivElement | null = null
+  let drawerDecalText: HTMLSpanElement | null = null
+  let viz: HTMLCanvasElement | null = null
+
+  function fmt(seconds: number) {
+    if (!Number.isFinite(seconds) || seconds < 0) return "0:00"
+    const m = Math.floor(seconds / 60)
+    const s = Math.floor(seconds % 60)
+    return `${m}:${s < 10 ? "0" : ""}${s}`
+  }
+
+  // Still used by #drawer-seek -- the stage's own range input, the
+  // only scrubbable one left.
+  function setRangeProgress(input: HTMLInputElement) {
+    const min = Number(input.min) || 0
+    const max = Number(input.max) || 100
+    const value = Number(input.value)
+    const pct = max > min ? ((value - min) / (max - min)) * 100 : 0
+    input.style.setProperty("--progress", `${pct}%`)
+    return pct
+  }
+
+  // Drives both display-only progress indicators (the bar's own, and
+  // the mobile mini bar's top-edge line) straight from audio state --
+  // neither is backed by a range input anymore, so there's nothing to
+  // read a .value from.
+  function syncProgress() {
+    if (!audio || !barProgress || !barProgressFill || !progressFill || !progressBorder) return
+    const pct = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0
+    const rounded = String(Math.round(pct))
+    barProgressFill.style.width = `${pct}%`
+    barProgress.setAttribute("aria-valuenow", rounded)
+    progressFill.style.width = `${pct}%`
+    progressBorder.setAttribute("aria-valuenow", rounded)
+  }
+
+  function updatePlayIcon() {
+    if (!audio || !playIcon || !playBtn) return
+    playIcon.className = audio.paused ? "ic-play" : "ic-pause"
+    playBtn.setAttribute("aria-label", audio.paused ? "Play" : "Pause")
+    if (drawerPlayIcon && drawerPlayBtn) {
+      drawerPlayIcon.className = audio.paused ? "ic-play" : "ic-pause"
+      drawerPlayBtn.setAttribute("aria-label", audio.paused ? "Play" : "Pause")
+    }
+    // Browsers auto-pause a <audio> element the instant it's
+    // disconnected from the document -- that fires this same "pause"
+    // listener, but it isn't a real user pause, and trusting it would
+    // erase the "should resume" signal the recovery path on the next
+    // page needs the moment before it can even use it.
+    if (document.contains(audio)) lastKnownPlaying = !audio.paused
+    emitState()
+  }
+
+  // Lets any page's tracklist know which track (by audioUrl) is
+  // currently loaded and whether it's playing, so it can highlight
+  // the matching row -- broadcast on every load/play/pause, and also
+  // on request (a freshly-loaded page asks via "player:query" since
+  // it can't see this module's state directly).
+  function emitState() {
+    if (!audio) return
+    const current = index >= 0 ? queue[index] : null
+    document.dispatchEvent(
+      new CustomEvent("player:state", {
+        detail: {
+          audioUrl: current?.audioUrl ?? null,
+          playing: !audio.paused,
+        },
+      }),
+    )
+  }
+
+  function updateNav() {
+    if (!prevBtn || !nextBtn) return
+    prevBtn.disabled = queue.length === 0
+    nextBtn.disabled = queue.length === 0
+    if (drawerPrevBtn) drawerPrevBtn.disabled = queue.length === 0
+    if (drawerNextBtn) drawerNextBtn.disabled = queue.length === 0
+  }
+
+  // ---------- step 8: CORS capability check + real analyser (additive) ----------
+  // Per-origin cache so a HEAD request isn't repeated for every track.
+  const corsResolved = new Map<string, boolean>()
+  const corsChecking = new Set<string>()
+  function originOf(url: string): string | null {
+    try {
+      return new URL(url, location.href).origin
+    } catch {
+      return null
+    }
+  }
+  function checkCorsAsync(origin: string, sampleUrl: string) {
+    if (corsChecking.has(origin)) return
+    corsChecking.add(origin)
+    fetch(sampleUrl, { method: "HEAD", mode: "cors", cache: "no-store" })
+      .then((res) => {
+        corsResolved.set(
+          origin,
+          res.ok && res.headers.has("access-control-allow-origin"),
+        )
+      })
+      .catch(() => {
+        corsResolved.set(origin, false)
+      })
+  }
+
+  let audioCtx: AudioContext | null = null
+  let analyser: AnalyserNode | null = null
+  let freqData: Uint8Array | null = null
+  let sourceNode: MediaElementAudioSourceNode | null = null
+  let analyserFailed = false
+
+  // Only ever wires the graph once per element (createMediaElementSource
+  // throws on a second call), and only once CORS is confirmed for the
+  // track's origin -- otherwise the element is left exactly as it is
+  // today and the simulation drives the visualizer instead. Resets
+  // whenever the audio element itself changes (see wireAudioElement)
+  // since a graph built on a since-discarded element is useless.
+  function ensureAudioGraph() {
+    if (!audio || sourceNode || analyserFailed) return
+    try {
+      const AC = window.AudioContext || (window as any).webkitAudioContext
+      if (!AC) {
+        analyserFailed = true
+        return
+      }
+      audioCtx = audioCtx || new AC()
+      sourceNode = audioCtx.createMediaElementSource(audio)
+      analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 1024
+      analyser.smoothingTimeConstant = 0.55
+      freqData = new Uint8Array(analyser.frequencyBinCount)
+      sourceNode.connect(analyser)
+      analyser.connect(audioCtx.destination)
+    } catch {
+      analyserFailed = true
+      sourceNode = null
+      analyser = null
+      freqData = null
+    }
+  }
+
+  function prepareAnalyser(url: string) {
+    if (!audio) return
+    try {
+      const origin = originOf(url)
+      if (!origin) return
+      checkCorsAsync(origin, url)
+      if (corsResolved.get(origin) === true) {
+        audio.crossOrigin = "anonymous"
+        ensureAudioGraph()
+      }
+    } catch {
+      analyserFailed = true
+    }
+  }
+
+  function resumeAudioContextIfNeeded() {
+    try {
+      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume()
+    } catch {}
+  }
+
+  function loadTrack(newIndex: number, autoplay = true, resumeAt = 0) {
+    if (!audio || !bar || !npTitle || !npAlbum || !playBtn) return
+    const track = queue[newIndex]
+    if (!track) return
+    index = newIndex
+    bar.classList.add("has-track")
+    syncBodyPadding(bar)
+    npTitle.textContent = track.title
+    npAlbum.textContent = track.album ?? ""
+    if (track.albumId) {
+      npAlbum.href = `/albums/${track.albumId}/`
+    } else {
+      npAlbum.removeAttribute("href")
+    }
+    if (drawerTitle) drawerTitle.textContent = track.title
+    if (drawerSub) {
+      const parts: string[] = []
+      if (track.album) parts.push(track.album)
+      if (track.year != null) parts.push(String(track.year))
+      if (track.trackNum != null && track.trackTotal != null) {
+        parts.push(`track ${track.trackNum} of ${track.trackTotal}`)
+      }
+      drawerSub.textContent = parts.join(" · ")
+    }
+    if (drawerCode) drawerCode.textContent = track.code ?? ""
+    if (drawerBarcode) drawerBarcode.innerHTML = seededBarcode(track.audioUrl, 64, 14)
+    document.documentElement.style.setProperty("--stage-era", track.eraBg ?? "var(--scarlet)")
+    document.documentElement.style.setProperty("--stage-era-fg", track.eraFg ?? "var(--bone)")
+    if (drawerDecal && drawerDecalText) {
+      // Shown when bpm OR key is present, not just when both are --
+      // the POC uses "//" as a separator between two possibly-partial
+      // fields, not a requirement that both exist.
+      if (track.bpm != null || track.key) {
+        const bpmPart = track.bpm != null ? `${track.bpm} BPM` : ""
+        const keyPart = track.key ?? ""
+        drawerDecalText.textContent = [bpmPart, keyPart].filter(Boolean).join(" // ")
+        drawerDecal.hidden = false
+      } else {
+        drawerDecal.hidden = true
+      }
+    }
+    prepareAnalyser(track.audioUrl)
+    audio.src = track.audioUrl
+    if (resumeAt > 0) audio.currentTime = resumeAt
+    if (autoplay) {
+      resumeAudioContextIfNeeded()
+      lastKnownPlaying = true
+      audio.play().catch(() => {
+        lastKnownPlaying = false
+      })
+    }
+    playBtn.disabled = false
+    if (drawerPlayBtn) drawerPlayBtn.disabled = false
+    if (drawerSeek) drawerSeek.disabled = false
+    updateNav()
+    emitState()
+  }
+
+  function togglePlayback() {
+    if (!audio || !audio.src) return
+    if (audio.paused) {
+      resumeAudioContextIfNeeded()
+      lastKnownPlaying = true
+      audio.play().catch(() => {
+        lastKnownPlaying = false
+      })
+    } else {
+      lastKnownPlaying = false
+      audio.pause()
+    }
+  }
+
+  function goToPrev() {
+    if (queue.length === 0) return
+    loadTrack((index - 1 + queue.length) % queue.length)
+  }
+
+  function goToNext() {
+    if (queue.length === 0) return
+    loadTrack((index + 1) % queue.length)
+  }
+
+  let drawerScrollY = 0
+  // Tracks whatever had focus when the stage opened (a row on an
+  // album page, the mini bar's open button, etc.) so focus can return
+  // to it on close, matching the POC's open/close focus contract.
+  let openerEl: HTMLElement | null = null
+
+  // While the stage is open, everything else on the page (nav, main
+  // content, the mini bar itself) becomes inert -- #player-drawer is
+  // always one of body's direct children (it's transition:persist),
+  // so this only ever needs to look at body's immediate children.
+  function setBehindStageInert(isOpen: boolean) {
+    if (!drawer) return
+    for (const el of Array.from(document.body.children)) {
+      if (el === drawer) continue
+      ;(el as HTMLElement).inert = isOpen
+    }
+  }
+
+  // overflow:hidden on body doesn't reliably block touch-scrolling on
+  // iOS Safari -- pin body in place at its current scroll offset and
+  // restore the real scroll position on close instead.
+  function openDrawer() {
+    if (!drawer || drawer.classList.contains("open")) return
+    openerEl = document.activeElement as HTMLElement | null
+    drawerScrollY = window.scrollY
+    document.body.style.position = "fixed"
+    document.body.style.top = `-${drawerScrollY}px`
+    document.body.style.left = "0"
+    document.body.style.right = "0"
+    drawer.classList.add("open")
+    drawer.setAttribute("aria-hidden", "false")
+    setBehindStageInert(true)
+    drawerPlayBtn?.focus({ preventScroll: true })
+  }
+
+  function closeDrawer() {
+    if (!drawer || !drawer.classList.contains("open")) return
+    drawer.classList.remove("open")
+    drawer.setAttribute("aria-hidden", "true")
+    document.body.style.position = ""
+    document.body.style.top = ""
+    document.body.style.left = ""
+    document.body.style.right = ""
+    window.scrollTo(0, drawerScrollY)
+    setBehindStageInert(false)
+    ;(openerEl ?? npOpenBtn)?.focus({ preventScroll: true })
+    openerEl = null
+  }
+
+  // Attaches the listeners that live directly on the <audio> element.
+  // Called on every initPlayerBar() run, but only actually does
+  // anything the first time it sees a given element -- so it's safe to
+  // call unconditionally, and it's what makes a replaced element (see
+  // the module-scope comment above) pick up working playback again.
+  // Returns whether `audio` was a new element this call.
+  function wireAudioElement(): boolean {
+    if (!audio || audio === knownAudio) return false
+    knownAudio = audio
+    sourceNode = null
+    analyser = null
+    freqData = null
+    analyserFailed = false
+
+    audio.addEventListener("play", updatePlayIcon)
+    audio.addEventListener("pause", updatePlayIcon)
+    audio.addEventListener("ended", () => {
+      if (queue.length > 0) goToNext()
+    })
+    audio.addEventListener("loadedmetadata", () => {
+      if (!audio) return
+      if (totTimeEl) totTimeEl.textContent = fmt(audio.duration)
+      if (drawerTotTime) drawerTotTime.textContent = fmt(audio.duration)
+      if (drawerSeek) drawerSeek.max = String(Math.floor(audio.duration * 1000))
+    })
+    audio.addEventListener("timeupdate", () => {
+      if (!audio) return
+      lastKnownTime = audio.currentTime
+      // Also kept fresh here, not just by the "play"/"pause" events --
+      // .paused flips synchronously the instant .play()/.pause() is
+      // called, but the events themselves fire asynchronously, so a
+      // navigation landing in that gap would otherwise resume as
+      // paused even though playback had actually started.
+      if (document.contains(audio)) lastKnownPlaying = !audio.paused
+      if (isSeeking) return
+      if (curTimeEl) curTimeEl.textContent = fmt(audio.currentTime)
+      if (drawerCurTime) drawerCurTime.textContent = fmt(audio.currentTime)
+      if (drawerSeek) {
+        drawerSeek.value = String(Math.floor(audio.currentTime * 1000))
+        setRangeProgress(drawerSeek)
+      }
+      syncProgress()
+    })
+    return true
+  }
+
   function initPlayerBar() {
-    const bar = document.getElementById("player-bar")
+    bar = document.getElementById("player-bar")
     if (!bar) return
     syncBodyPadding(bar)
-    if (bar.dataset.initialized === "true") return
-    bar.dataset.initialized = "true"
 
-    const audio = document.getElementById("player-audio") as HTMLAudioElement
-    const playBtn = document.getElementById("play-btn") as HTMLButtonElement
-    const playIcon = document.getElementById("play-icon") as HTMLSpanElement
-    const prevBtn = document.getElementById("prev-btn") as HTMLButtonElement
-    const nextBtn = document.getElementById("next-btn") as HTMLButtonElement
-    const seek = document.getElementById("seek") as HTMLInputElement
-    const curTimeEl = document.getElementById("cur-time") as HTMLSpanElement
-    const totTimeEl = document.getElementById("tot-time") as HTMLSpanElement
-    const npTitle = document.getElementById("np-title") as HTMLDivElement
-    const npAlbum = document.getElementById("np-album") as HTMLAnchorElement
-    const progressFill = document.getElementById(
-      "progress-fill",
-    ) as HTMLDivElement
-    const npEl = document.getElementById("np") as HTMLDivElement
-    // New: explicit "open player" affordances for desktop -- a real
-    // button wrapping the title (keyboard accessible), and a separate
-    // visible expand control.
-    const npOpenBtn = document.getElementById(
-      "np-open",
-    ) as HTMLButtonElement | null
-    const expandBtn = document.getElementById(
-      "expand-btn",
-    ) as HTMLButtonElement | null
-    const deskMql = matchMedia("(min-width: 980px)")
+    audio = document.getElementById("player-audio") as HTMLAudioElement | null
+    playBtn = document.getElementById("play-btn") as HTMLButtonElement | null
+    playIcon = document.getElementById("play-icon") as HTMLSpanElement | null
+    prevBtn = document.getElementById("prev-btn") as HTMLButtonElement | null
+    nextBtn = document.getElementById("next-btn") as HTMLButtonElement | null
+    barProgress = document.getElementById("bar-progress") as HTMLDivElement | null
+    barProgressFill = document.getElementById("bar-progress-fill") as HTMLDivElement | null
+    curTimeEl = document.getElementById("cur-time") as HTMLSpanElement | null
+    totTimeEl = document.getElementById("tot-time") as HTMLSpanElement | null
+    npTitle = document.getElementById("np-title") as HTMLDivElement | null
+    npAlbum = document.getElementById("np-album") as HTMLAnchorElement | null
+    progressFill = document.getElementById("progress-fill") as HTMLDivElement | null
+    progressBorder = document.getElementById("progress-border") as HTMLDivElement | null
+    npEl = document.getElementById("np") as HTMLDivElement | null
+    // Explicit "open player" affordances for desktop -- a real button
+    // wrapping the title (keyboard accessible), and a separate visible
+    // expand control.
+    npOpenBtn = document.getElementById("np-open") as HTMLButtonElement | null
+    expandBtn = document.getElementById("expand-btn") as HTMLButtonElement | null
 
     // Drawer elements are mobile-only UI; guard each use individually
     // rather than bailing out of the whole player if one is missing.
-    const drawer = document.getElementById(
-      "player-drawer",
-    ) as HTMLDivElement | null
-    const drawerCloseBtn = document.getElementById(
-      "drawer-close-btn",
-    ) as HTMLButtonElement | null
-    const drawerTitle = document.getElementById(
-      "drawer-title",
-    ) as HTMLDivElement | null
-    const drawerSub = document.getElementById(
-      "drawer-sub",
-    ) as HTMLParagraphElement | null
-    const drawerBarcode = document.getElementById(
-      "drawer-barcode",
-    ) as HTMLSpanElement | null
-    const drawerCode = document.getElementById(
-      "drawer-code",
-    ) as HTMLSpanElement | null
-    const drawerSeek = document.getElementById(
-      "drawer-seek",
-    ) as HTMLInputElement | null
-    const drawerCurTime = document.getElementById(
-      "drawer-cur-time",
-    ) as HTMLSpanElement | null
-    const drawerTotTime = document.getElementById(
-      "drawer-tot-time",
-    ) as HTMLSpanElement | null
-    const drawerPrevBtn = document.getElementById(
-      "drawer-prev-btn",
-    ) as HTMLButtonElement | null
-    const drawerNextBtn = document.getElementById(
-      "drawer-next-btn",
-    ) as HTMLButtonElement | null
-    const drawerPlayBtn = document.getElementById(
-      "drawer-play-btn",
-    ) as HTMLButtonElement | null
-    const drawerPlayIcon = document.getElementById(
-      "drawer-play-icon",
-    ) as HTMLSpanElement | null
-    // New in step 8: optional "Signal" decal (bpm/key), shown only when a
-    // track carries that data, and the stage's spectrum canvas.
-    const drawerDecal = document.getElementById(
-      "drawer-decal",
-    ) as HTMLDivElement | null
-    const drawerDecalText = document.getElementById(
-      "drawer-decal-text",
-    ) as HTMLSpanElement | null
-    const viz = document.getElementById(
-      "player-viz",
-    ) as HTMLCanvasElement | null
+    drawer = document.getElementById("player-drawer") as HTMLDivElement | null
+    drawerCloseBtn = document.getElementById("drawer-close-btn") as HTMLButtonElement | null
+    drawerTitle = document.getElementById("drawer-title") as HTMLDivElement | null
+    drawerSub = document.getElementById("drawer-sub") as HTMLParagraphElement | null
+    drawerBarcode = document.getElementById("drawer-barcode") as HTMLSpanElement | null
+    drawerCode = document.getElementById("drawer-code") as HTMLSpanElement | null
+    drawerSeek = document.getElementById("drawer-seek") as HTMLInputElement | null
+    drawerCurTime = document.getElementById("drawer-cur-time") as HTMLSpanElement | null
+    drawerTotTime = document.getElementById("drawer-tot-time") as HTMLSpanElement | null
+    drawerPrevBtn = document.getElementById("drawer-prev-btn") as HTMLButtonElement | null
+    drawerNextBtn = document.getElementById("drawer-next-btn") as HTMLButtonElement | null
+    drawerPlayBtn = document.getElementById("drawer-play-btn") as HTMLButtonElement | null
+    drawerPlayIcon = document.getElementById("drawer-play-icon") as HTMLSpanElement | null
+    // Optional "Signal" decal (bpm/key), shown only when a track
+    // carries that data, and the stage's spectrum canvas.
+    drawerDecal = document.getElementById("drawer-decal") as HTMLDivElement | null
+    drawerDecalText = document.getElementById("drawer-decal-text") as HTMLSpanElement | null
+    viz = document.getElementById("player-viz") as HTMLCanvasElement | null
 
     if (
       !audio ||
@@ -334,305 +728,58 @@
       !playIcon ||
       !prevBtn ||
       !nextBtn ||
-      !seek ||
+      !barProgress ||
+      !barProgressFill ||
       !curTimeEl ||
       !totTimeEl ||
       !npTitle ||
       !npAlbum ||
       !npEl ||
-      !progressFill
+      !progressFill ||
+      !progressBorder
     ) {
       return
     }
 
-    type QueueTrack = {
-      title: string
-      album?: string
-      albumId?: string
-      audioUrl: string
-      // optional: not sent by any dispatcher yet (no track in the
-      // content collection has bpm/key set), but the stage's decal
-      // reads them if present -- never invented when absent.
-      bpm?: number
-      key?: string
-      // optional stage furniture, all precomputed by the dispatcher
-      // (it has the album/track index and era data already, at build
-      // time) rather than looked up here -- absent fields just leave
-      // that piece of the subline/code off instead of inventing it.
-      code?: string // "A06-T02" style
-      year?: number
-      trackNum?: number
-      trackTotal?: number
-      eraBg?: string // e.g. "var(--era-2012)"
-      eraFg?: string
+    // Always re-checked, regardless of whether the one-time setup below
+    // has already run for this bar: #player-audio can go missing or
+    // get replaced independently of the rest of the bar (see the
+    // module-scope comment above). Re-attach its listeners and resume
+    // playback on it if that just happened.
+    const isNewAudioElement = wireAudioElement()
+    // Snapshot before updatePlayIcon() below, which reads this fresh
+    // element's genuine (paused, nothing loaded) state and would
+    // otherwise overwrite lastKnownPlaying with "false" before the
+    // resume call three lines down gets a chance to read it.
+    const resumeIndex = index
+    const resumePlaying = lastKnownPlaying
+    const resumeTime = lastKnownTime
+    audio.volume = 0.8
+    syncProgress()
+    updatePlayIcon()
+    updateNav()
+    if (isNewAudioElement && queue[resumeIndex]) {
+      loadTrack(resumeIndex, resumePlaying, resumeTime)
     }
 
-    let queue: QueueTrack[] = []
-    let index = -1
-    let isSeeking = false
-
-    function fmt(seconds: number) {
-      if (!Number.isFinite(seconds) || seconds < 0) return "0:00"
-      const m = Math.floor(seconds / 60)
-      const s = Math.floor(seconds % 60)
-      return `${m}:${s < 10 ? "0" : ""}${s}`
-    }
-
-    function setRangeProgress(input: HTMLInputElement) {
-      const min = Number(input.min) || 0
-      const max = Number(input.max) || 100
-      const value = Number(input.value)
-      const pct = max > min ? ((value - min) / (max - min)) * 100 : 0
-      input.style.setProperty("--progress", `${pct}%`)
-      return pct
-    }
-
-    // Mobile shows a plain progress line instead of the draggable seek
-    // input; keep both in sync from the same seek-input calculation.
-    function syncSeekProgress() {
-      const pct = setRangeProgress(seek)
-      progressFill.style.width = `${pct}%`
-      if (drawerSeek) {
-        drawerSeek.value = seek.value
-        setRangeProgress(drawerSeek)
-      }
-    }
-
-    function updatePlayIcon() {
-      playIcon.className = audio.paused ? "ic-play" : "ic-pause"
-      playBtn.setAttribute("aria-label", audio.paused ? "Play" : "Pause")
-      if (drawerPlayIcon && drawerPlayBtn) {
-        drawerPlayIcon.className = audio.paused ? "ic-play" : "ic-pause"
-        drawerPlayBtn.setAttribute("aria-label", audio.paused ? "Play" : "Pause")
-      }
-      emitState()
-    }
-
-    // Lets any page's tracklist know which track (by audioUrl) is
-    // currently loaded and whether it's playing, so it can highlight
-    // the matching row -- broadcast on every load/play/pause, and also
-    // on request (a freshly-loaded page asks via "player:query" since
-    // it can't see this closure's state directly).
-    function emitState() {
-      const current = index >= 0 ? queue[index] : null
-      document.dispatchEvent(
-        new CustomEvent("player:state", {
-          detail: {
-            audioUrl: current?.audioUrl ?? null,
-            playing: !audio.paused,
-          },
-        }),
-      )
-    }
-
-    function updateNav() {
-      prevBtn.disabled = queue.length === 0
-      nextBtn.disabled = queue.length === 0
-      if (drawerPrevBtn) drawerPrevBtn.disabled = queue.length === 0
-      if (drawerNextBtn) drawerNextBtn.disabled = queue.length === 0
-    }
-
-    // ---------- step 8: CORS capability check + real analyser (additive) ----------
-    // Per-origin cache so a HEAD request isn't repeated for every track.
-    const corsResolved = new Map<string, boolean>()
-    const corsChecking = new Set<string>()
-    function originOf(url: string): string | null {
-      try {
-        return new URL(url, location.href).origin
-      } catch {
-        return null
-      }
-    }
-    function checkCorsAsync(origin: string, sampleUrl: string) {
-      if (corsChecking.has(origin)) return
-      corsChecking.add(origin)
-      fetch(sampleUrl, { method: "HEAD", mode: "cors", cache: "no-store" })
-        .then((res) => {
-          corsResolved.set(
-            origin,
-            res.ok && res.headers.has("access-control-allow-origin"),
-          )
-        })
-        .catch(() => {
-          corsResolved.set(origin, false)
-        })
-    }
-
-    let audioCtx: AudioContext | null = null
-    let analyser: AnalyserNode | null = null
-    let freqData: Uint8Array | null = null
-    let sourceNode: MediaElementAudioSourceNode | null = null
-    let analyserFailed = false
-
-    // Only ever wires the graph once per element (createMediaElementSource
-    // throws on a second call), and only once CORS is confirmed for the
-    // track's origin -- otherwise the element is left exactly as it is
-    // today and the simulation drives the visualizer instead.
-    function ensureAudioGraph() {
-      if (sourceNode || analyserFailed) return
-      try {
-        const AC =
-          window.AudioContext || (window as any).webkitAudioContext
-        if (!AC) {
-          analyserFailed = true
-          return
-        }
-        audioCtx = audioCtx || new AC()
-        sourceNode = audioCtx.createMediaElementSource(audio)
-        analyser = audioCtx.createAnalyser()
-        analyser.fftSize = 1024
-        analyser.smoothingTimeConstant = 0.55
-        freqData = new Uint8Array(analyser.frequencyBinCount)
-        sourceNode.connect(analyser)
-        analyser.connect(audioCtx.destination)
-      } catch {
-        analyserFailed = true
-        sourceNode = null
-        analyser = null
-        freqData = null
-      }
-    }
-
-    function prepareAnalyser(url: string) {
-      try {
-        const origin = originOf(url)
-        if (!origin) return
-        checkCorsAsync(origin, url)
-        if (corsResolved.get(origin) === true) {
-          audio.crossOrigin = "anonymous"
-          ensureAudioGraph()
-        }
-      } catch {
-        analyserFailed = true
-      }
-    }
-
-    function resumeAudioContextIfNeeded() {
-      try {
-        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume()
-      } catch {}
-    }
-
-    function loadTrack(newIndex: number, autoplay = true) {
-      const track = queue[newIndex]
-      if (!track) return
-      index = newIndex
-      bar.classList.add("has-track")
-      syncBodyPadding(bar)
-      npTitle.textContent = track.title
-      npAlbum.textContent = track.album ?? ""
-      if (track.albumId) {
-        npAlbum.href = `/albums/${track.albumId}/`
-      } else {
-        npAlbum.removeAttribute("href")
-      }
-      if (drawerTitle) drawerTitle.textContent = track.title
-      if (drawerSub) {
-        const parts: string[] = []
-        if (track.album) parts.push(track.album)
-        if (track.year != null) parts.push(String(track.year))
-        if (track.trackNum != null && track.trackTotal != null) {
-          parts.push(`track ${track.trackNum} of ${track.trackTotal}`)
-        }
-        drawerSub.textContent = parts.join(" · ")
-      }
-      if (drawerCode) drawerCode.textContent = track.code ?? ""
-      if (drawerBarcode) drawerBarcode.innerHTML = seededBarcode(track.audioUrl, 64, 14)
-      document.documentElement.style.setProperty("--stage-era", track.eraBg ?? "var(--scarlet)")
-      document.documentElement.style.setProperty("--stage-era-fg", track.eraFg ?? "var(--bone)")
-      if (drawerDecal && drawerDecalText) {
-        // Shown when bpm OR key is present, not just when both are --
-        // the POC uses "//" as a separator between two possibly-partial
-        // fields, not a requirement that both exist.
-        if (track.bpm != null || track.key) {
-          const bpmPart = track.bpm != null ? `${track.bpm} BPM` : ""
-          const keyPart = track.key ?? ""
-          drawerDecalText.textContent = [bpmPart, keyPart].filter(Boolean).join(" // ")
-          drawerDecal.hidden = false
-        } else {
-          drawerDecal.hidden = true
-        }
-      }
-      prepareAnalyser(track.audioUrl)
-      audio.src = track.audioUrl
-      if (autoplay) {
-        resumeAudioContextIfNeeded()
-        audio.play().catch(() => {})
-      }
-      playBtn.disabled = false
-      seek.disabled = false
-      if (drawerPlayBtn) drawerPlayBtn.disabled = false
-      if (drawerSeek) drawerSeek.disabled = false
-      updateNav()
-      emitState()
-    }
-
-    function togglePlayback() {
-      if (!audio.src) return
-      if (audio.paused) {
-        resumeAudioContextIfNeeded()
-        audio.play()
-      } else audio.pause()
-    }
-
-    let drawerScrollY = 0
-    // Tracks whatever had focus when the stage opened (a row on an
-    // album page, the mini bar's open button, etc.) so focus can return
-    // to it on close, matching the POC's open/close focus contract.
-    let openerEl: HTMLElement | null = null
-
-    // While the stage is open, everything else on the page (nav, main
-    // content, the mini bar itself) becomes inert -- #player-drawer is
-    // always one of body's direct children (it's transition:persist),
-    // so this only ever needs to look at body's immediate children.
-    function setBehindStageInert(isOpen: boolean) {
-      if (!drawer) return
-      for (const el of Array.from(document.body.children)) {
-        if (el === drawer) continue
-        ;(el as HTMLElement).inert = isOpen
-      }
-    }
-
-    // overflow:hidden on body doesn't reliably block touch-scrolling on
-    // iOS Safari -- pin body in place at its current scroll offset and
-    // restore the real scroll position on close instead.
-    function openDrawer() {
-      if (!drawer || drawer.classList.contains("open")) return
-      openerEl = document.activeElement as HTMLElement | null
-      drawerScrollY = window.scrollY
-      document.body.style.position = "fixed"
-      document.body.style.top = `-${drawerScrollY}px`
-      document.body.style.left = "0"
-      document.body.style.right = "0"
-      drawer.classList.add("open")
-      drawer.setAttribute("aria-hidden", "false")
-      setBehindStageInert(true)
-      drawerPlayBtn?.focus({ preventScroll: true })
-    }
-
-    function closeDrawer() {
-      if (!drawer || !drawer.classList.contains("open")) return
-      drawer.classList.remove("open")
-      drawer.setAttribute("aria-hidden", "true")
-      document.body.style.position = ""
-      document.body.style.top = ""
-      document.body.style.left = ""
-      document.body.style.right = ""
-      window.scrollTo(0, drawerScrollY)
-      setBehindStageInert(false)
-      ;(openerEl ?? npOpenBtn)?.focus({ preventScroll: true })
-      openerEl = null
-    }
+    if (bar.dataset.initialized === "true") return
+    bar.dataset.initialized = "true"
 
     playBtn.addEventListener("click", togglePlayback)
     drawerPlayBtn?.addEventListener("click", togglePlayback)
 
     npOpenBtn?.addEventListener("click", () => {
-      if (!audio.src) return
+      if (!audio?.src) return
+      // Safari/WebKit doesn't focus a <button> on click the way other
+      // browsers do -- openDrawer() below captures document.activeElement
+      // as the "opener" to restore focus to on close, so without this
+      // it would capture whatever had focus before the click instead.
+      npOpenBtn?.focus()
       openDrawer()
     })
     expandBtn?.addEventListener("click", () => {
-      if (!audio.src) return
+      if (!audio?.src) return
+      expandBtn?.focus()
       openDrawer()
     })
 
@@ -646,7 +793,7 @@
 
     document.addEventListener("keydown", (event) => {
       if (event.code !== "Space" && event.key !== " ") return
-      if (!audio.src) return
+      if (!audio?.src) return
 
       const target = event.target as HTMLElement | null
       const tag = target?.tagName
@@ -663,98 +810,46 @@
       togglePlayback()
     })
 
-    function goToPrev() {
-      if (queue.length === 0) return
-      loadTrack((index - 1 + queue.length) % queue.length)
-    }
-
-    function goToNext() {
-      if (queue.length === 0) return
-      loadTrack((index + 1) % queue.length)
-    }
-
     prevBtn.addEventListener("click", goToPrev)
     nextBtn.addEventListener("click", goToNext)
     drawerPrevBtn?.addEventListener("click", goToPrev)
     drawerNextBtn?.addEventListener("click", goToNext)
 
-    audio.addEventListener("play", updatePlayIcon)
-    audio.addEventListener("pause", updatePlayIcon)
-    audio.addEventListener("ended", () => {
-      if (queue.length > 0) goToNext()
-    })
-
-    audio.addEventListener("loadedmetadata", () => {
-      totTimeEl.textContent = fmt(audio.duration)
-      seek.max = String(Math.floor(audio.duration * 1000))
-      if (drawerTotTime) drawerTotTime.textContent = fmt(audio.duration)
-      if (drawerSeek) drawerSeek.max = seek.max
-    })
-
-    audio.addEventListener("timeupdate", () => {
-      if (isSeeking) return
-      curTimeEl.textContent = fmt(audio.currentTime)
-      if (drawerCurTime) drawerCurTime.textContent = fmt(audio.currentTime)
-      if (audio.duration) {
-        seek.value = String(Math.floor(audio.currentTime * 1000))
-        syncSeekProgress()
-      }
-    })
-
-    seek.addEventListener("input", () => {
-      isSeeking = true
-      curTimeEl.textContent = fmt(Number(seek.value) / 1000)
-      if (drawerCurTime) drawerCurTime.textContent = fmt(Number(seek.value) / 1000)
-      syncSeekProgress()
-    })
-    seek.addEventListener("change", () => {
-      audio.currentTime = Number(seek.value) / 1000
-      isSeeking = false
-    })
-
+    // The stage's #drawer-seek is the only scrubbable range input left
+    // -- the bar's progress display is read-only (see syncProgress).
     drawerSeek?.addEventListener("input", () => {
       if (!drawerSeek) return
       isSeeking = true
-      seek.value = drawerSeek.value
-      curTimeEl.textContent = fmt(Number(drawerSeek.value) / 1000)
+      curTimeEl!.textContent = fmt(Number(drawerSeek.value) / 1000)
       if (drawerCurTime)
         drawerCurTime.textContent = fmt(Number(drawerSeek.value) / 1000)
-      syncSeekProgress()
+      setRangeProgress(drawerSeek)
     })
     drawerSeek?.addEventListener("change", () => {
-      if (!drawerSeek) return
+      if (!drawerSeek || !audio) return
       audio.currentTime = Number(drawerSeek.value) / 1000
       isSeeking = false
     })
 
+    // A track row click only plays -- it never opens the stage, on any
+    // screen size. This is a deliberate POC deviation; see PROGRESS.md.
     document.addEventListener("player:play", ((event: CustomEvent) => {
       const detail = event.detail
       if (!detail || !Array.isArray(detail.queue)) return
       queue = detail.queue
       loadTrack(detail.index ?? 0, detail.autoplay ?? true)
-      // Desktop (>=980px): picking a track from a row also opens the
-      // stage, matching the POC's playFromUser. Re-checked here (not
-      // just trusted from the dispatcher) so the stage never auto-opens
-      // on a narrow viewport regardless of what a caller requests.
-      if (detail.openStage && deskMql.matches) openDrawer()
     }) as EventListener)
 
     document.addEventListener("player:toggle", togglePlayback)
 
-    // Re-clicking the row of the track that's already playing opens the
-    // stage without restarting or toggling playback (desktop only --
-    // dispatchers are expected to send player:toggle instead on mobile).
+    // Opens the stage without touching playback -- used by the bar's
+    // info area and expand button (desktop) and the mini bar (phones).
     document.addEventListener("player:open-stage", () => {
-      if (!audio.src) return
+      if (!audio?.src) return
       openDrawer()
     })
 
     document.addEventListener("player:query", emitState)
-
-    audio.volume = 0.8
-    syncSeekProgress()
-    updatePlayIcon()
-    updateNav()
 
     // ---------- step 8: --minih (mini bar height) for page bottom padding ----------
     function initMinih() {
@@ -792,12 +887,12 @@
           Math.max(a, Math.min(b, v))
 
         new ResizeObserver(() => {
-          const r = viz.getBoundingClientRect()
+          const r = viz!.getBoundingClientRect()
           const dpr = Math.min(2, devicePixelRatio || 1)
           W = r.width
           H = r.height
-          viz.width = Math.round(W * dpr)
-          viz.height = Math.round(H * dpr)
+          viz!.width = Math.round(W * dpr)
+          viz!.height = Math.round(H * dpr)
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
           N = clamp(Math.floor((W + BGAP) / (12 + BGAP)), 14, 40)
           lvl = Array(N).fill(0)
@@ -808,7 +903,7 @@
 
         function targets(ts: number) {
           const out = new Array(N).fill(0)
-          if (audio.paused) {
+          if (!audio || audio.paused) {
             if (!reduce)
               for (let i = 0; i < N; i++)
                 out[i] = 0.05 + 0.05 * (0.5 + 0.5 * Math.sin(ts / 600 + i * 0.55))
@@ -928,7 +1023,7 @@
     right: 0;
     bottom: 0;
     z-index: 60;
-    height: 84px;
+    height: 76px;
     background: var(--static);
     border-top: 1px solid var(--line);
     /* Hidden until a track is selected, on every screen size -- slide
@@ -968,13 +1063,12 @@
     padding: 0 24px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 24px;
+    gap: 20px;
   }
 
   .np {
     min-width: 0;
-    flex: 1;
+    flex: 1 1 160px;
     display: flex;
     flex-direction: column;
   }
@@ -1021,15 +1115,8 @@
     text-decoration: underline;
   }
 
-  .transport {
-    justify-self: center;
-    flex: none;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 7px;
-  }
   .controls {
+    flex: none;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -1160,13 +1247,14 @@
     transform: scaleX(-1);
   }
 
-  .scrub {
+  .progress-row {
     display: flex;
     align-items: center;
     gap: 9px;
-    width: 100%;
+    flex: 1 1 160px;
+    min-width: 0;
   }
-  .scrub .time {
+  .progress-row .time {
     font-family: var(--font-mono);
     font-size: 0.68rem;
     color: var(--ash-dim);
@@ -1174,9 +1262,24 @@
     width: 2.6em;
     flex: none;
   }
-  .scrub .time.now {
+  .progress-row .time.now {
     text-align: right;
     color: var(--ash);
+  }
+  /* Display only -- the bar shows playback position, it doesn't scrub
+     it, so this is a plain div (not a range input), matching the
+     mobile mini bar's own non-interactive progress line. */
+  .bar-progress {
+    flex: 1;
+    min-width: 0;
+    height: 6px;
+    background: rgba(239, 230, 204, 0.2);
+    pointer-events: none;
+  }
+  .bar-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--pop);
   }
 
   .range {
@@ -1233,7 +1336,7 @@
   }
 
   @media (max-width: 979px) {
-    .scrub {
+    .progress-row {
       display: none;
     }
     #prev-btn,

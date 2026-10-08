@@ -251,22 +251,15 @@ const trackRows = tracks.map((track, i) => ({
     }) as EventListener)
     document.dispatchEvent(new CustomEvent("player:query"))
 
-    // Same breakpoint the POC's desk.matches uses for "play also opens
-    // the stage".
-    const deskMql = window.matchMedia("(min-width: 980px)")
-
+    // A row click only plays/toggles -- it never opens the stage, on
+    // any screen size. The stage opens only via the bar's info area,
+    // its expand button, or the mobile mini bar.
     function playRow(li: HTMLElement) {
       const link = li.querySelector(".rowbtn.track-play") as HTMLElement | null
       const audioUrl = link?.dataset.audioUrl
       if (!link || !audioUrl) return
       if (audioUrl === activeAudioUrl) {
-        // Desktop: re-picking the already-playing row opens the stage,
-        // no restart/toggle. Phones: unchanged, toggles play/pause.
-        if (deskMql.matches) {
-          document.dispatchEvent(new CustomEvent("player:open-stage"))
-        } else {
-          document.dispatchEvent(new CustomEvent("player:toggle"))
-        }
+        document.dispatchEvent(new CustomEvent("player:toggle"))
         return
       }
       const index = Number(link.dataset.index)
@@ -278,7 +271,7 @@ const trackRows = tracks.map((track, i) => ({
       }
       document.dispatchEvent(
         new CustomEvent("player:play", {
-          detail: { queue, index, openStage: deskMql.matches },
+          detail: { queue, index },
         }),
       )
     }
