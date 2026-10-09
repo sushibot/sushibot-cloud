@@ -645,3 +645,96 @@ custom domain was already live on the bucket; this only repoints the
   expecting 206. **151/151 returned 206.** No failures to report.
 - `npm run build` completes clean, 18 pages.
 - No bucket, CORS, or DNS changes made.
+
+## Round: FAIL B fix (viz not synced on first play)
+
+### Empirical classification, before the fix
+
+Instrumented (via `page.addInitScript`, not shipped code) to timestamp
+`crossOrigin`/`src` sets, `createMediaElementSource` calls, and
+`audioCtx.resume()`/`getByteFrequencyData` behavior, then ran 12 fresh
+browser contexts (no shared cache/module state between runs), clicking
+play immediately on the first track of each:
+
+```
+run 0..11: graphBuiltT=never -> (a) probe not resolved before play
+--- summary over 12 runs ---
+  12/12: (a) probe not resolved before play -- real analyser never
+         wired up this track, sim ran
+```
+
+**(a) was the sole cause, 12/12, not occasional** -- and it's
+deterministic, not a race that sometimes loses: `checkCorsAsync()`
+only ever starts from inside `prepareAnalyser()`, which only runs at
+tap time. The HEAD request hadn't even been *issued* yet at the exact
+synchronous moment `prepareAnalyser` checked whether it had already
+resolved -- for a session's first track, that check was certain to
+fail every time, by the language's own execution model, not by
+chance. (b), (c), and (d) never had a chance to occur on the first
+track, since the graph was never built at all to exhibit them.
+
+Also checked the **second** track of the same session (where the
+probe has had time to resolve in the background): 12/12 runs showed
+the real analyser already live with no issues -- confirming the bug
+was specific to "first track of a session," matching what you saw
+("on first play"), not a general flakiness in the CORS/graph logic
+itself.
+
+### Fix
+
+Added a fixed, always-present canary URL on the shared audio origin
+(`CORS_WARMUP_URL`, a real track under `audio.sushibot.cloud`,
+confirmed to return 206 by the domain-switch verification above), and
+kick off the existing `checkCorsAsync()` against it once, at module
+init via `requestIdleCallback` (falling back to immediate if
+unavailable) -- not gated on any track being loaded or any tap having
+happened. This is the same probe mechanism as before (same cache, same
+`corsResolved` map), just started as early as possible instead of at
+the exact moment it was already too late to matter. `prepareAnalyser()`
+and the crossOrigin-ordering guarantee are otherwise unchanged --
+still called before `audio.src` is assigned, still never retroactively
+flips `crossOrigin` on a load already in flight.
+
+Also added, per your original ask: a `?debug=1` status line reading
+`analyser: live | sim | suspended`, persisted via `sessionStorage` so
+it survives client-side navigation, rendered in a small fixed-position
+panel re-created on every `astro:page-load` (the underlying flag
+persists at module scope; only the DOM node needs recreating after a
+swap). Updated once per analyser-state-changing call
+(`ensureAudioGraph`/`prepareAnalyser`) and once per visualizer frame
+while the stage is open and animating, so it reflects live suspension
+too, not just the initial live/sim decision.
+
+### Empirical classification, after the fix
+
+Same 12-fresh-context harness, first track of each session:
+
+```
+run 0..11: graphBuiltT≈1.1-1.5s -> no issue -- real analyser live and
+           producing non-flat data
+--- summary over 12 runs ---
+  12/12: no issue -- real analyser live and producing non-flat data
+```
+
+**12/12 after, 0/12 before.** The warmup probe resolves well within
+the time between page load and a first tap in every run tested.
+Manually verified the `?debug=1` panel itself: shows `analyser: --`
+before any track loads, flips to `analyser: live` within ~2s of
+tapping play, and persists (re-rendered, not recreated from scratch)
+across a client-side navigation without the query param present.
+
+### Regression suite
+
+Full `player-test.mjs`: 28/28 in both Chrome and WebKit. One test
+needed a fix unrelated to this round's logic: `CORS-check-fails`
+route-blocked the *old* `r2.dev` host to simulate a CORS failure --
+stale since the domain-switch commit above, since nothing requests
+that host anymore, so the mock silently stopped blocking anything.
+Updated it to block `audio.sushibot.cloud` instead; confirmed it now
+genuinely simulates an origin-wide CORS failure (blocking both a
+track's own probe and the new warmup probe, since they share a host)
+and that playback still works with `crossOrigin` correctly left unset
+in that case -- unchanged behavior, just a stale test fixture caught
+and fixed.
+
+No bucket, CORS, or DNS changes made.

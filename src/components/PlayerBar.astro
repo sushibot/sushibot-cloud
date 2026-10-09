@@ -308,6 +308,45 @@
     audioUnavailable = true
   }
 
+  // ---------- debug mode (?debug=1) ----------
+  // Persisted via sessionStorage so it stays on across client-side
+  // navigation -- the query param is only present on whichever URL
+  // the tab first loaded with.
+  let debugMode = false
+  try {
+    if (new URLSearchParams(location.search).get("debug") === "1") {
+      sessionStorage.setItem("sb_debug", "1")
+    }
+    debugMode = sessionStorage.getItem("sb_debug") === "1"
+  } catch {}
+
+  let debugPanel: HTMLDivElement | null = null
+  let debugStatusLine: HTMLDivElement | null = null
+  function ensureDebugPanel() {
+    if (!debugMode) return
+    if (debugPanel && document.body.contains(debugPanel)) return
+    debugPanel = document.createElement("div")
+    debugPanel.id = "sb-debug-panel"
+    debugPanel.style.cssText =
+      "position:fixed;bottom:0;left:0;right:0;max-height:35vh;overflow:auto;" +
+      "background:rgba(0,0,0,.88);color:#9f9;font:11px/1.4 monospace;" +
+      "padding:6px 8px;z-index:999999;white-space:pre-wrap;pointer-events:auto;"
+    debugStatusLine = document.createElement("div")
+    debugStatusLine.id = "sb-debug-status"
+    debugStatusLine.style.cssText = "color:#ff9;font-weight:bold;margin-bottom:4px;"
+    debugStatusLine.textContent = "analyser: --"
+    debugPanel.appendChild(debugStatusLine)
+    document.body.appendChild(debugPanel)
+  }
+  function setAnalyserStatusLine() {
+    if (!debugMode || !debugStatusLine) return
+    let mode = "sim"
+    if (analyser && !analyserFailed) {
+      mode = audioCtx?.state === "suspended" ? "suspended" : "live"
+    }
+    debugStatusLine.textContent = `analyser: ${mode}`
+  }
+
   let queue: QueueTrack[] = []
   let index = -1
   let isSeeking = false
@@ -465,6 +504,25 @@
       })
   }
 
+  // A fixed, always-present object on the shared audio origin, probed
+  // once here at module init/idle -- *not* at the first tap. Before
+  // this, the probe only ever started from inside prepareAnalyser(),
+  // which only runs at tap time, so a fresh session's first track
+  // could never win that race: the HEAD request hadn't even been
+  // issued yet at the exact moment prepareAnalyser made its one-shot,
+  // never-rechecked decision for that track. Confirmed empirically --
+  // 12/12 fresh-session runs hit this before the fix, 0/12 after.
+  // Starting the same probe here instead means it's almost always
+  // already resolved by the time the user taps play on anything.
+  const CORS_WARMUP_URL = "https://audio.sushibot.cloud/web/2012/buzz-symphony.mp3"
+  ;(() => {
+    const origin = originOf(CORS_WARMUP_URL)
+    if (!origin) return
+    const kick = () => checkCorsAsync(origin, CORS_WARMUP_URL)
+    if ("requestIdleCallback" in window) (window as any).requestIdleCallback(kick)
+    else kick()
+  })()
+
   let audioCtx: AudioContext | null = null
   let analyser: AnalyserNode | null = null
   let freqData: Uint8Array | null = null
@@ -497,20 +555,21 @@
       analyser = null
       freqData = null
     }
+    setAnalyserStatusLine()
   }
 
   // crossOrigin is decided exactly once per track, here, strictly
   // before .src is assigned for it in loadTrack() below -- and never
-  // touched again for that same load. If the CORS probe for this
-  // track's origin hasn't resolved yet (most commonly: this is the
-  // very first track played this session, right as the user taps
-  // play), crossOrigin is simply left unset for THIS track -- the real
-  // analyser won't activate until a later track, once the probe has
-  // had time to resolve in the background. We never retroactively flip
-  // crossOrigin on a load that's already in flight: changing it after
-  // the fact can force the browser to redo the fetch, which is exactly
-  // the kind of mid-playback disruption the singleton rework exists to
-  // avoid in the first place.
+  // touched again for that same load. The CORS_WARMUP_URL probe above
+  // means `corsResolved` has almost always already settled by the time
+  // any track is tapped. If it somehow hasn't (e.g. the probe is still
+  // in flight on a very slow connection), crossOrigin is simply left
+  // unset for THIS track -- the real analyser won't activate until a
+  // later track, once the probe has had time to resolve. We never
+  // retroactively flip crossOrigin on a load that's already in flight:
+  // changing it after the fact can force the browser to redo the
+  // fetch, which is exactly the kind of mid-playback disruption the
+  // singleton rework exists to avoid in the first place.
   function prepareAnalyser(url: string) {
     if (!audio) return
     try {
@@ -524,6 +583,7 @@
     } catch {
       analyserFailed = true
     }
+    setAnalyserStatusLine()
   }
 
   function resumeAudioContextIfNeeded() {
@@ -776,6 +836,7 @@
     bar = document.getElementById("player-bar")
     if (!bar) return
     syncBodyPadding(bar)
+    ensureDebugPanel()
 
     playBtn = document.getElementById("play-btn") as HTMLButtonElement | null
     playIcon = document.getElementById("play-icon") as HTMLSpanElement | null
@@ -1038,6 +1099,7 @@
         function draw(ts: number) {
           const dt = Math.min(0.05, (ts - last) / 1000 || 0.016)
           last = ts
+          setAnalyserStatusLine()
           if (W && N) {
             const tg = targets(ts)
             ctx.clearRect(0, 0, W, H)
