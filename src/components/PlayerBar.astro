@@ -309,25 +309,81 @@
   }
 
   // ---------- debug mode (?debug=1, ?noanalyser=1) ----------
-  // Both persisted via sessionStorage so they stay on across client-
-  // side navigation -- the query param is only present on whichever
-  // URL the tab first loaded with. This is diagnostic-only: neither
-  // flag changes behavior for a normal visit, and noanalyser is only
-  // meant for isolating whether the Web Audio graph is implicated in
-  // FAIL A (lock-screen skip/auto-advance going silent after the
-  // first track) -- it is NOT a fix, just a way to test with that
-  // whole code path removed from the picture.
+  // Persisted via sessionStorage so they stay on across client-side
+  // navigation without retyping the query string on every page. This
+  // is diagnostic-only: neither flag changes behavior for a normal
+  // visit, and noanalyser is only meant for isolating whether the Web
+  // Audio graph is implicated in FAIL A (lock-screen skip/auto-advance
+  // going silent after the first track) -- it is NOT a fix, just a way
+  // to test with that whole code path removed from the picture.
+  //
+  // An explicit URL always wins over whatever's stored: if EITHER
+  // `debug` or `noanalyser` appears in this load's query string at
+  // all, both flags are fully recomputed from this URL in one shot
+  // (any value other than "1", including the param being entirely
+  // absent, means off) and that overwrites storage. A URL with neither
+  // param leaves whatever's already stored untouched. This was added
+  // after a stuck noanalyser=1 was reported from a *private* Safari
+  // tab with a clean ?debug=1 URL -- ruled out a stale deployed
+  // bundle, a service worker, a cookie, and window.name/referrer (none
+  // of that exists in this logic at all); the leading explanation is a
+  // documented WebKit behavior where Private Browsing shares
+  // sessionStorage across tabs within one private session rather than
+  // isolating per-tab. This fix makes the exact mechanism moot either
+  // way: a clean ?debug=1 now always forces noanalyser off regardless
+  // of what's stored.
   let debugMode = false
   let noAnalyser = false
+  let debugSource: "url" | "storage" | "default" = "default"
+  let noAnalyserSource: "url" | "storage" | "default" = "default"
+  let flagConflictWarning: string | null = null
   try {
-    if (new URLSearchParams(location.search).get("debug") === "1") {
-      sessionStorage.setItem("sb_debug", "1")
+    const params = new URLSearchParams(location.search)
+    const debugParam = params.get("debug")
+    const noAnalyserParam = params.get("noanalyser")
+
+    // A conflict is only real if a prior value actually existed --
+    // sessionStorage.getItem returning null (nothing ever stored) must
+    // never be treated as "previously off," or the very first explicit
+    // ?noanalyser=1 of a brand-new session would spuriously warn about
+    // a conflict with a value that was never there.
+    const warnIfConflicting = (priorRaw: string | null, newVal: string) => {
+      if (priorRaw !== null && priorRaw !== newVal) {
+        flagConflictWarning = `noanalyser was stored=${priorRaw}, this URL implies ${newVal} -- using ${newVal}`
+      }
     }
-    if (new URLSearchParams(location.search).get("noanalyser") === "1") {
-      sessionStorage.setItem("sb_noanalyser", "1")
+
+    if (debugParam !== null) {
+      // debug explicitly declared this load -- also resets noanalyser
+      // to off unless THIS SAME url explicitly declares it too, so a
+      // plain ?debug=1 can never silently inherit a stuck noanalyser
+      // from storage (the bug this whole fix exists for).
+      const newNoAnalyser = noAnalyserParam === "1" ? "1" : "0"
+      warnIfConflicting(sessionStorage.getItem("sb_noanalyser"), newNoAnalyser)
+      sessionStorage.setItem("sb_debug", debugParam === "1" ? "1" : "0")
+      sessionStorage.setItem("sb_noanalyser", newNoAnalyser)
+    } else if (noAnalyserParam !== null) {
+      // noanalyser declared alone, debug not mentioned at all -- only
+      // this one flag changes. debugMode is deliberately left
+      // untouched: a tester toggling noanalyser mid-session while
+      // debug is already on should never have debug mode silently
+      // turned off as a side effect.
+      const newNoAnalyser = noAnalyserParam === "1" ? "1" : "0"
+      warnIfConflicting(sessionStorage.getItem("sb_noanalyser"), newNoAnalyser)
+      sessionStorage.setItem("sb_noanalyser", newNoAnalyser)
     }
+    // Neither param present: storage is left completely untouched.
+
     debugMode = sessionStorage.getItem("sb_debug") === "1"
     noAnalyser = sessionStorage.getItem("sb_noanalyser") === "1"
+    debugSource = debugParam !== null
+      ? "url"
+      : sessionStorage.getItem("sb_debug") !== null ? "storage" : "default"
+    noAnalyserSource = noAnalyserParam !== null
+      ? "url"
+      : debugParam !== null
+        ? "default" // reset to off as a side effect of an explicit ?debug= URL
+        : sessionStorage.getItem("sb_noanalyser") !== null ? "storage" : "default"
   } catch {}
 
   // Full diagnostic log for FAIL A. Kept at module scope (survives
@@ -354,53 +410,96 @@
 
   let debugPanel: HTMLDivElement | null = null
   let debugStatusLine: HTMLDivElement | null = null
+  let debugWarningLine: HTMLDivElement | null = null
   function ensureDebugPanel() {
     if (!debugMode) return
     if (debugPanel && document.body.contains(debugPanel)) return
     debugPanel = document.createElement("div")
     debugPanel.id = "sb-debug-panel"
-    // Anchored to the TOP, not the bottom -- the player bar and its
-    // own tap targets (play/prev/next, the mini bar on mobile) live at
-    // the bottom of the viewport, and a bottom-fixed panel tall enough
-    // to show a useful amount of log would sit on top of them and
-    // block every real control the person is trying to test. Found by
-    // a Playwright click failing with "subtree intercepts pointer
-    // events" on #next-btn with the panel open -- the same would block
-    // a real tap on a phone.
+    // Anchored BELOW the real nav (top: var(--navh), the same custom
+    // property PlayerBar's own stage already uses for the identical
+    // reason -- see the stage's own comment above), not at bare top:0
+    // and not at the bottom. A bare top:0 panel sat directly on top of
+    // the site's own nav links (confirmed: a real, non-forced tap on
+    // "Archives" in the nav timed out as blocked, underneath the
+    // panel). A bottom-anchored panel sat on top of the player bar's
+    // own tap targets instead (an earlier draft, caught the same way,
+    // via a Playwright click failing with "subtree intercepts pointer
+    // events" on #next-btn). max-height is capped by BOTH a flat 32vh
+    // ceiling AND `100dvh - navh - 100px` (100px is the player bar's
+    // own height plus its mobile bottom padding, with a small margin),
+    // whichever is smaller -- so on no viewport size can the panel
+    // reach down far enough to cover the player bar either.
     debugPanel.style.cssText =
-      "position:fixed;top:0;left:0;right:0;max-height:32vh;overflow:hidden;" +
+      "position:fixed;top:var(--navh);left:0;right:0;" +
+      "max-height:min(32vh, calc(100dvh - var(--navh) - 100px));overflow:hidden;" +
       "display:flex;flex-direction:column;" +
       "background:rgba(0,0,0,.88);color:#9f9;font:11px/1.4 monospace;" +
       "padding:6px 8px;z-index:999999;pointer-events:auto;"
     debugStatusLine = document.createElement("div")
     debugStatusLine.id = "sb-debug-status"
-    debugStatusLine.style.cssText = "color:#ff9;font-weight:bold;margin-bottom:4px;flex:none;"
-    debugStatusLine.textContent = noAnalyser ? "analyser: disabled (noanalyser=1)" : "analyser: --"
+    debugStatusLine.style.cssText = "color:#ff9;font-weight:bold;flex:none;"
+    if (flagConflictWarning) {
+      debugWarningLine = document.createElement("div")
+      debugWarningLine.id = "sb-debug-warning"
+      debugWarningLine.style.cssText = "color:#f66;font-weight:bold;flex:none;"
+      debugWarningLine.textContent = `⚠ ${flagConflictWarning}`
+      debugPanel.appendChild(debugWarningLine)
+    }
     const logBody = document.createElement("div")
     logBody.id = "sb-debug-log"
-    logBody.style.cssText = "overflow:auto;white-space:pre-wrap;flex:1;"
+    logBody.style.cssText = "overflow:auto;white-space:pre-wrap;flex:1;margin-top:4px;"
     debugPanel.appendChild(debugStatusLine)
     debugPanel.appendChild(logBody)
     document.body.appendChild(debugPanel)
+    setAnalyserStatusLine()
     renderDebugLog()
   }
+  // Reports WHY the current mode is what it is, not just the mode
+  // itself -- distinguishes a flag forced off by an explicit URL from
+  // one left on by stale storage, and a CORS probe that hasn't
+  // resolved yet (still possibly "sim" for now, might go "live" on a
+  // later track) from one that's definitively failed (never will).
   function setAnalyserStatusLine() {
     if (!debugMode || !debugStatusLine) return
-    let mode: string = noAnalyser ? "disabled (noanalyser=1)" : "sim"
-    if (!noAnalyser && analyser && !analyserFailed) {
-      mode = audioCtx?.state === "suspended" ? "suspended" : "live"
+    let reason: string
+    if (noAnalyser) {
+      reason = noAnalyserSource === "url" ? "disabled(url)" : "disabled(storage)"
+    } else if (analyserFailed) {
+      reason = "disabled(ctx failed)"
+    } else if (corsResolved.get(CORS_WARMUP_ORIGIN ?? "") === false) {
+      reason = "disabled(probe failed)"
+    } else if (analyser) {
+      reason = audioCtx?.state === "suspended" ? "suspended" : "live"
+    } else {
+      reason = "sim"
     }
-    debugStatusLine.textContent = `analyser: ${mode}`
+    const search = location.search || "(none)"
+    debugStatusLine.textContent =
+      `analyser: ${reason}\n` +
+      `search=${search}  debug:${debugSource} noanalyser:${noAnalyserSource}`
   }
 
   // visibilitychange fires on lock/unlock and background/foreground --
   // registered once, here, since `document` itself is the same object
   // for the whole tab session regardless of client-side navigation.
-  if (debugMode) {
-    document.addEventListener("visibilitychange", () => {
-      debugLog(`visibilitychange: ${document.visibilityState}`)
-    })
-  }
+  // Re-asserts UI state (not just logs it) on becoming visible again --
+  // a targeted fix for a reported "error banner stuck after a lock-
+  // screen Next": the underlying setErrorUI(false) calls already run
+  // correctly on a successful track change, but if a DOM write made
+  // while the tab was hidden/backgrounded isn't repainted until it's
+  // visible again, this forces a fresh re-apply of whatever the state
+  // actually is right when it matters -- the same resync pattern
+  // initPlayerBar() already uses after a navigation, applied here for
+  // a visibility change instead.
+  document.addEventListener("visibilitychange", () => {
+    debugLog(`visibilitychange: ${document.visibilityState}`)
+    if (document.visibilityState === "visible") {
+      setErrorUI(playbackError, "visibilitychange resync")
+      updatePlayIcon()
+      syncProgress()
+    }
+  })
 
   let queue: QueueTrack[] = []
   let index = -1
@@ -491,7 +590,9 @@
       drawerPlayBtn.setAttribute("aria-label", audio.paused ? "Play" : "Pause")
     }
     if ("mediaSession" in navigator) {
-      navigator.mediaSession.playbackState = audio.paused ? "paused" : "playing"
+      const state = audio.paused ? "paused" : "playing"
+      navigator.mediaSession.playbackState = state
+      debugLog(`mediaSession.playbackState := ${state}`)
     }
     emitState()
   }
@@ -522,10 +623,11 @@
     if (drawerNextBtn) drawerNextBtn.disabled = queue.length === 0
   }
 
-  function setErrorUI(hasError: boolean) {
+  function setErrorUI(hasError: boolean, source: string) {
     playbackError = hasError
     if (npErrorEl) npErrorEl.hidden = !hasError
     bar?.classList.toggle("has-error", hasError)
+    debugLog(`setErrorUI(${hasError}) <- ${source}`)
   }
 
   // ---------- CORS capability check + real analyser ----------
@@ -570,10 +672,10 @@
   // Starting the same probe here instead means it's almost always
   // already resolved by the time the user taps play on anything.
   const CORS_WARMUP_URL = "https://audio.sushibot.cloud/web/2012/buzz-symphony.mp3"
+  const CORS_WARMUP_ORIGIN = originOf(CORS_WARMUP_URL)
   ;(() => {
-    const origin = originOf(CORS_WARMUP_URL)
-    if (!origin) return
-    const kick = () => checkCorsAsync(origin, CORS_WARMUP_URL)
+    if (!CORS_WARMUP_ORIGIN) return
+    const kick = () => checkCorsAsync(CORS_WARMUP_ORIGIN, CORS_WARMUP_URL)
     if ("requestIdleCallback" in window) (window as any).requestIdleCallback(kick)
     else kick()
   })()
@@ -668,7 +770,10 @@
         // inventing per-track art that isn't there.
         artwork: [{ src: "/album-art/sushibot.jpg", sizes: "965x928", type: "image/jpeg" }],
       })
-    } catch {}
+      debugLog(`mediaSession.metadata := "${track.title}"`)
+    } catch (err) {
+      debugLog(`mediaSession.metadata threw: ${(err as any)?.name ?? err}`)
+    }
   }
 
   function updatePositionState() {
@@ -680,11 +785,26 @@
         playbackRate: audio.playbackRate || 1,
         position: Math.min(audio.currentTime, audio.duration),
       })
-    } catch {}
+    } catch (err) {
+      // Previously fully silent -- this was explicitly called out as a
+      // candidate for silently invalidating the whole action-handler
+      // set on some iOS versions. Surfacing it so the next lock-screen
+      // run shows whether it's actually throwing at all.
+      debugLog(`mediaSession.setPositionState threw: ${(err as any)?.name ?? err}`)
+    }
   }
 
   function setupMediaSession() {
     if (!("mediaSession" in navigator)) return
+    // Logs the one-time REGISTRATION of each handler -- distinct from
+    // the per-press debugLog calls below, which log each time a
+    // handler actually fires. If the lock-screen's skip buttons turn
+    // into +/-10s controls mid-session, comparing "were these ever
+    // registered" (this line) against "did anything ever clear them"
+    // (nothing in this file calls setActionHandler(action, null) --
+    // confirmed by reading -- so if they do disappear, it's not this
+    // code doing it on purpose) is the first thing to check.
+    debugLog("setActionHandler registered: play, pause, previoustrack, nexttrack, seekto (no seekbackward/seekforward)")
     // debugLog() is synchronous (array push + a DOM textContent write)
     // -- it never introduces an await before the handler's own call,
     // which must stay direct and synchronous for iOS to accept it as
@@ -774,7 +894,7 @@
     if (!track) return
     index = newIndex
     isActuallyPlaying = false
-    setErrorUI(false)
+    setErrorUI(false, "loadTrack")
     paintTrackUI(track)
     prepareAnalyser(track.audioUrl)
     debugLog(`src := ${track.audioUrl}`)
@@ -897,7 +1017,7 @@
     // !audio.paused.
     audio.addEventListener("playing", () => {
       isActuallyPlaying = true
-      setErrorUI(false)
+      setErrorUI(false, "playing-event")
     })
     audio.addEventListener("pause", () => {
       isActuallyPlaying = false
@@ -913,7 +1033,7 @@
     })
     audio.addEventListener("error", () => {
       isActuallyPlaying = false
-      setErrorUI(true)
+      setErrorUI(true, "error-event")
     })
     audio.addEventListener("loadedmetadata", () => {
       if (!audio) return
@@ -944,6 +1064,15 @@
     if (!bar) return
     syncBodyPadding(bar)
     ensureDebugPanel()
+    // The panel node itself can survive a client-side swap (it isn't
+    // part of what Astro's transition touches), so ensureDebugPanel()
+    // above may no-op on its "already exists" guard -- but
+    // location.search is a live read, and the module script that
+    // computed debugSource/noAnalyserSource only ever runs once per
+    // tab, so without this the "search=" line would stay frozen on
+    // whatever the tab's very first URL looked like. Refresh it
+    // explicitly on every page-load regardless.
+    setAnalyserStatusLine()
 
     playBtn = document.getElementById("play-btn") as HTMLButtonElement | null
     playIcon = document.getElementById("play-icon") as HTMLSpanElement | null
@@ -1017,7 +1146,7 @@
     updatePlayIcon()
     updateNav()
     if (index >= 0 && queue[index]) paintTrackUI(queue[index])
-    setErrorUI(playbackError)
+    setErrorUI(playbackError, "page-load resync")
 
     if (bar.dataset.initialized === "true") return
     bar.dataset.initialized = "true"

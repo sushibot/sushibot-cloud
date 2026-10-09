@@ -832,3 +832,207 @@ shipped.
 
 No bucket, CORS, or DNS changes made. No fix for FAIL A in this
 commit.
+
+## Round: 3 bugs from the first real-device debug run
+
+Your `?noanalyser=1` iPhone log confirmed lock-screen Next and auto-
+advance both genuinely work at the audio level (playing, resolved,
+currentTime advancing through 26s locked) with the Web Audio graph
+removed from the picture -- strong evidence FAIL A is specifically
+about the AudioContext/Web-Audio routing, pending your normal-run
+(analyser enabled) logs to confirm before any fix to that path. This
+round covers the three bugs that same test turned up.
+
+### Bug 2: noanalyser stuck on, even in a clean private tab
+
+**Investigated before touching code, per your instruction.** Pulled
+the actual deployed bundle from staging
+(`/_astro/PlayerBar.astro_astro_type_script_index_0_lang.*.js`) and
+diffed its logic against source -- byte-for-byte match, so this was
+never a stale cache or an old bundle being served
+(`cf-cache-status: HIT` on that request is expected and harmless:
+Astro content-hashes the filename, so any code change gets a new URL
+entirely; nothing about Cloudflare ignoring the query string is
+possible here regardless, since the flag logic is 100% client-side JS
+reading `location.search` at runtime -- the HTML/JS Cloudflare serves
+is identical no matter what's in the query string). Checked each of
+your five candidates directly:
+- (a) default/implied-by-debug branch: none exists -- both flags
+  default `false` independently in the deployed code.
+- (b) cache/Worker route ignoring the query string: not applicable,
+  see above.
+- (c) service worker: none registered anywhere in the HTML/JS;
+  `/sw.js` returns 404.
+- (d) cookie: not read anywhere in this logic.
+- (e) `window.name`/`document.referrer`: not read anywhere in this
+  logic.
+
+The only mechanism that ever sets `noAnalyser` is `sessionStorage`,
+exactly as designed -- which points to a documented WebKit behavior as
+the likely carrier: Safari's Private Browsing shares `sessionStorage`
+across tabs within one private *session*, rather than isolating
+per-tab the way Chrome does, so an earlier `?noanalyser=1` test
+anywhere in that same private session can leak into a tab that looks
+clean. Couldn't fully confirm this specific mechanism without a real
+device -- which is exactly why the fix below also surfaces the raw
+`location.search` and each flag's source, so your next run shows it
+directly instead of me inferring it.
+
+**Fix: an explicit URL always wins.** If a load's query string
+contains *either* `debug` or `noanalyser` at all, both flags are fully
+recomputed from that URL in one shot (anything other than `"1"`,
+including the param being entirely absent, means off) and that
+overwrites `sessionStorage`. A URL with neither param leaves whatever
+was already stored untouched, so a test run doesn't need to retype
+both flags on every page. `?debug=1` alone now forces `noanalyser`
+off; `?noanalyser=0` and `?debug=0` work as explicit resets. Verified
+with a 5-scenario script
+(`check-flag-precedence.mjs`, one-off, not committed):
+`?debug=1&noanalyser=1` → `disabled(url)`; a later `?debug=1` alone in
+the same context → resets to off, conflict warning printed; `?debug=1
+&noanalyser=0` → `0`; `?debug=0` → debug off entirely, panel gone; a
+plain client-side nav with neither param → storage preserved. All five
+behaved exactly as specified.
+
+**Addition 1 (reason for the current mode)**: the status line's first
+block now reads one of `live | sim | suspended | disabled(url) |
+disabled(storage) | disabled(probe failed) | disabled(ctx failed)` --
+not just the mode, but *why*. `disabled(url)`/`disabled(storage)`
+distinguish a flag forced off by explicit intent from one left on by
+carried-over storage; `disabled(probe failed)` means the CORS probe
+definitively resolved false for the shared origin (never going live
+this session) vs. plain `sim`, which means the probe simply hasn't
+resolved *yet* (might still go live on a later track);
+`disabled(ctx failed)` means `AudioContext`/graph construction itself
+threw.
+
+**Addition 2 (conflict warning)**: when an explicit URL's declared
+value for `noanalyser` disagrees with whatever was already stored, a
+separate, visually distinct line (`⚠ noanalyser was stored=X, this URL
+implies Y -- using Y`) prints above the log. Verified in the same
+precedence script above (see "conflict warning printed" case).
+
+Also now shown on the status line: the raw `location.search` for the
+current page, plus `debug:<source> noanalyser:<source>` where source
+is `url` / `storage` / `default`.
+
+**Found and fixed while testing this (not something you reported, but
+would have blocked your test if shipped)**: `location.search` only
+reads live if `setAnalyserStatusLine()` actually runs again on a given
+page. Astro only evaluates this component's module script once per
+tab, and the debug panel's own DOM node can survive a client-side
+swap untouched -- so without an explicit refresh, the status line's
+`search=` field would have stayed frozen on whatever the tab's very
+first URL looked like, defeating the exact diagnostic this addition
+exists for. Fixed by calling `setAnalyserStatusLine()` unconditionally
+from `initPlayerBar()` (which does run on every `astro:page-load`),
+separately from `ensureDebugPanel()`'s "does the node already exist"
+guard. Verified: a plain client-side nav from `?debug=1` to a path
+with no query string at all now correctly shows `search=(none)`.
+
+**Two more real bugs, caught by the fresh reviewer on this diff (not
+by my own testing) and fixed before pushing:**
+- **Spurious conflict warning on a brand-new session's very first
+  explicit URL.** `sessionStorage.getItem(...) === "1"` collapses
+  `null` (nothing ever stored) to the same `false` as "previously
+  stored off" -- so the very first `?debug=1&noanalyser=1` of a tab's
+  life showed a false "conflict" warning about a prior value that
+  never existed, which would have trained you to ignore the one time
+  the warning is actually wrong. Fixed: the comparison only runs when
+  `sessionStorage.getItem(...)` is not `null`, i.e. a prior value
+  genuinely existed.
+- **`?noanalyser=0` (or `=1`) alone silently turned debug mode off.**
+  My original rule treated "either param present" as "fully recompute
+  both," which meant toggling `noanalyser` mid-session with a URL that
+  never mentions `debug` at all silently reset `sb_debug` to `"0"` as
+  a side effect -- exactly the most likely real usage pattern
+  ("just flip noanalyser, leave debug alone"), destroying the whole
+  diagnostic panel with zero on-screen explanation. Fixed: the two
+  flags are no longer resolved symmetrically. `debug` being present
+  still resets `noanalyser` to off unless that same URL also specifies
+  it (per your original ask: "?debug=1 alone must reset noanalyser to
+  off"). `noanalyser` being present *without* `debug` in the same URL
+  now changes only `noanalyser` -- `debugMode` is left completely
+  untouched.
+- Added two scenarios to `check-flag-precedence.mjs` covering exactly
+  these: a first-ever-load case (no warning), and `?noanalyser=0`
+  alone after an established `?debug=1&noanalyser=1` session (debug
+  stays on, panel still exists). Both pass. Full suite re-run clean
+  after the fix: 28/28 Chrome, 28/28 WebKit.
+
+### Bug 1: stale "PLAYBACK ERROR" banner
+
+**Reproduced the underlying mechanism locally first.** Forced a
+genuine network-level error on a track (`route.abort`), confirmed the
+existing `audio:error` debug line fires reliably, and confirmed the
+banner correctly clears on skipping to a healthy track afterward --
+end to end, the error → banner → recovery path works correctly on its
+own. So the iPhone symptom (banner visibly stuck despite a logged
+`audio:playing` and no `audio:error` line) isn't a structural bug in
+that core mechanism itself.
+
+Given that, and since I can't fully rule between "a stale value from
+before `?debug=1` was turned on" and "a backgrounded-tab repaint
+quirk" without a real device, the fix addresses both possibilities
+without depending on knowing which one it is:
+- `setErrorUI()` now takes a `source` tag and logs every call
+  (`setErrorUI(<value>) <- <source>`) -- the next run's log will show
+  the exact transition sequence directly, including whether a
+  `setErrorUI(true, ...)` call happens from anywhere other than the
+  one `error` listener (it shouldn't, per current code, but now it's
+  verifiable rather than assumed).
+- `visibilitychange` becoming `visible` now re-asserts the error
+  banner, play icon, and progress bar from their current state
+  (`setErrorUI(playbackError, "visibilitychange resync")`,
+  `updatePlayIcon()`, `syncProgress()`) -- the same resync pattern
+  `initPlayerBar()` already uses after a navigation, applied here for
+  a visibility change instead. This is a safe, no-op-if-correct
+  defensive fix: if the state was already right, nothing visibly
+  changes; if a backgrounded tab failed to repaint a DOM write made
+  while hidden, this forces a fresh application of the actual current
+  state the moment the screen is looked at again.
+
+### Item 3: Media Session handler-drop logging (no fix yet)
+
+Confirmed by reading: `setActionHandler` is called in exactly one
+place (`setupMediaSession()`, itself called exactly once), for `play`/
+`pause`/`previoustrack`/`nexttrack`/`seekto` only -- no
+`seekbackward`/`seekforward` registered anywhere in the file, and
+nothing anywhere calls `setActionHandler(action, null)` to clear one.
+Added, logging only:
+- A one-time log line at registration listing exactly which actions
+  got registered (and noting the absence of seekbackward/seekforward).
+- `mediaSession.playbackState := <state>` logged every time it's set.
+- `mediaSession.metadata := "<title>"` logged every time it's set, and
+  the metadata-construction `catch` (previously silent) now logs the
+  error name if it throws.
+- The `setPositionState` `catch` (previously silent) now logs the
+  error name if it throws -- this was explicitly called out as a
+  candidate for silently invalidating the whole action-handler set on
+  some iOS versions, so if it's actually throwing, the next run will
+  show it.
+
+No re-registration fix shipped, per your instruction -- holding for
+your normal-run logs.
+
+### Regression suite + a second real bug found while testing
+
+28/28 in both Chrome and WebKit. While verifying the new status line's
+`location.search` display across a real client-side navigation, found
+that the panel (still top-anchored from last round's fix) now
+overlapped the *site's own nav links* -- confirmed with a non-forced
+Playwright click on the "Archives" nav link timing out as blocked
+underneath the panel, the same class of bug as last round's bottom-
+anchored-blocks-player-bar issue, just flipped to the other edge.
+Fixed by anchoring the panel to `top: var(--navh)` -- the same CSS
+custom property `PlayerBar`'s own full-screen stage already uses to
+sit below the real nav, dynamically kept in sync with the nav's actual
+rendered height -- and capping `max-height` at
+`min(32vh, 100dvh - navh - 100px)`, so it can't grow tall enough to
+reach the player bar at the bottom either, on any viewport size.
+Reconfirmed after: the nav click succeeds, `#next-btn` is still
+reachable, and the full suite stays 28/28.
+
+No bucket, CORS, or DNS changes made. No fix for FAIL A's analyser
+path, and no Media Session re-registration fix -- both still waiting
+on your logs.
