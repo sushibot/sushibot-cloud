@@ -738,3 +738,97 @@ in that case -- unchanged behavior, just a stale test fixture caught
 and fixed.
 
 No bucket, CORS, or DNS changes made.
+
+## Round: FAIL A instrumentation (lock-screen skip/auto-advance goes silent)
+
+**Diagnostic only, as instructed -- no fix in this commit.** Adds a
+`?debug=1` event log and a `?noanalyser=1` isolation flag so your next
+iPhone run can tell us which of the three hypotheses (AudioContext
+suspended while routed through it, a rejected `play()` inside the
+`ended`/`nexttrack` handler, or a stalled background `src` fetch) is
+actually happening, instead of guessing.
+
+### URLs (staging)
+
+- Full log, normal behavior: `https://staging-sushibot-cloud.gfontan1.workers.dev/?debug=1`
+- Full log, Web Audio graph disabled entirely:
+  `https://staging-sushibot-cloud.gfontan1.workers.dev/?debug=1&noanalyser=1`
+
+Either works from any page on the site, not just the homepage -- the
+flag is read once and stored in `sessionStorage`, so it stays on for
+every page you navigate to afterward in that tab, including across a
+screen lock/unlock (sessionStorage isn't cleared by locking, only by
+closing the tab/app or ending the browser process). You only need the
+`?debug=1`/`?noanalyser=1` URL once per test run, at the start.
+
+### What the log panel shows
+
+A panel appears pinned to the **top** of the screen (not the bottom --
+it was first built bottom-anchored, which overlapped and blocked taps
+on the real player controls down there; moved to the top once a
+Playwright click failure caught it). Below the one bold status line,
+every line is `[Ns] <event>`, where `N` is seconds since the page
+loaded. Legend:
+
+| Line prefix | Meaning |
+|---|---|
+| `analyser: live \| sim \| suspended \| disabled (noanalyser=1)` | The bold status line. `live` = real analyser driving the visualizer; `sim` = simulated fallback; `suspended` = graph exists but `AudioContext.state` is `suspended` (silently not actually analysing, even if `sim`/`live` logic thinks otherwise); `disabled` = `noanalyser=1` is active, graph never built at all. |
+| `src := <url>` | `audio.src` was just assigned -- a new track started loading. |
+| `audio:<event> paused=… ct=… rs=…` | A raw event fired on the audio element (`play`, `pause`, `playing`, `waiting`, `stalled`, `ended`, `error`, `emptied`, `abort`, `seeking`, `seeked`, `loadstart`, `canplay`), with `.paused`, `.currentTime`, and `.readyState` at that instant. If playback silently dies, the *last* line here before the gap is the most important one -- note which event it is and what `rs` (readyState) says. |
+| `ended -> auto-advance` | The `ended` event specifically triggered `goToNext()` -- confirms auto-advance was attempted at all. |
+| `play() resolved` | The browser's `play()` promise resolved -- audio should genuinely be playing. |
+| `play() rejected: <ErrorName>` | The `play()` promise rejected. The error name is the important part -- `NotAllowedError` means the browser refused it as not gesture-rooted; other names point elsewhere. This was previously silently swallowed (`.catch(() => {})`) with no visibility at all. |
+| `audioCtx statechange: <state>` | The shared `AudioContext`'s state changed (`running`/`suspended`/`closed`). If this shows `suspended` right around when a lock-screen skip goes silent, that's strong evidence for the AudioContext-suspended hypothesis. |
+| `visibilitychange: <state>` | The page's `document.visibilityState` changed (`visible`/`hidden`) -- fires on lock/background and unlock/foreground. Line up its timestamp against the `audioCtx statechange` and `play() rejected` lines around it. |
+| `mediaSession:<action> [seekTime]` | A lock-screen/Control-Center media control was pressed (`play`, `pause`, `previoustrack`, `nexttrack`, `seekto`). Confirms the OS actually delivered the control press to the page at all. |
+
+### What to run on iPhone
+
+1. `?debug=1`, lock the screen after the first track, skip via the
+   lock screen's controls, wait, unlock, read the panel.
+2. Same, but let the first track end naturally (auto-advance) instead
+   of skipping.
+3. Repeat both with `?debug=1&noanalyser=1` -- if the silent failure
+   stops happening with the graph disabled, that isolates the
+   AudioContext/Web-Audio-routing path as the cause; if it still
+   happens, the cause is elsewhere (a rejected `play()` or a stalled
+   fetch, both still visible in the log either way).
+
+Send the full panel contents (a screenshot of it after unlocking is
+fine) for each run. No fix will be made until these logs pick a cause,
+per your instruction.
+
+### Implementation notes
+
+- `prepareAnalyser()` and `ensureAudioGraph()` both short-circuit on
+  `noAnalyser`, so `?noanalyser=1` skips `crossOrigin` assignment,
+  `createMediaElementSource`, and `AudioContext` construction
+  entirely -- confirmed via instrumentation: `createMediaElementSource`
+  never fires with the flag on, status line correctly reads `analyser:
+  disabled (noanalyser=1)`, and playback still works.
+- Every Media Session action handler still calls `togglePlayback()`/
+  `goToPrev()`/`goToNext()` as the direct next synchronous statement
+  after the (synchronous, array-push-only) `debugLog()` call -- no
+  `await` was introduced anywhere in that chain. Confirmed by reading
+  and by the reviewer below.
+- `audio.play()`'s existing `.catch(() => {})` (both call sites) is now
+  `.then(...).catch((err) => debugLog(...))` -- same swallow behavior,
+  now also visible when debug mode is on. `.play()` itself is still
+  invoked synchronously; attaching `.then()/.catch()` doesn't delay
+  when it's called, only observes what it resolves to afterward.
+
+### Regression suite
+
+28/28 in both Chrome and WebKit. `check-faila-instrumentation.mjs`
+(one-off, not committed) confirmed the `noanalyser=1` isolation and
+sampled the log's actual output format. Caught and fixed one real
+issue in the process: the debug panel's first draft was bottom-
+anchored and tall enough (45vh) to cover the real player bar's own
+tap targets, confirmed by a Playwright click on `#next-btn` failing
+with "subtree intercepts pointer events" -- on a real phone this would
+have blocked the actual controls while debug mode was on. Moved the
+panel to the top of the screen and reduced its height before this
+shipped.
+
+No bucket, CORS, or DNS changes made. No fix for FAIL A in this
+commit.

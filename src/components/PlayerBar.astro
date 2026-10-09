@@ -308,17 +308,49 @@
     audioUnavailable = true
   }
 
-  // ---------- debug mode (?debug=1) ----------
-  // Persisted via sessionStorage so it stays on across client-side
-  // navigation -- the query param is only present on whichever URL
-  // the tab first loaded with.
+  // ---------- debug mode (?debug=1, ?noanalyser=1) ----------
+  // Both persisted via sessionStorage so they stay on across client-
+  // side navigation -- the query param is only present on whichever
+  // URL the tab first loaded with. This is diagnostic-only: neither
+  // flag changes behavior for a normal visit, and noanalyser is only
+  // meant for isolating whether the Web Audio graph is implicated in
+  // FAIL A (lock-screen skip/auto-advance going silent after the
+  // first track) -- it is NOT a fix, just a way to test with that
+  // whole code path removed from the picture.
   let debugMode = false
+  let noAnalyser = false
   try {
     if (new URLSearchParams(location.search).get("debug") === "1") {
       sessionStorage.setItem("sb_debug", "1")
     }
+    if (new URLSearchParams(location.search).get("noanalyser") === "1") {
+      sessionStorage.setItem("sb_noanalyser", "1")
+    }
     debugMode = sessionStorage.getItem("sb_debug") === "1"
+    noAnalyser = sessionStorage.getItem("sb_noanalyser") === "1"
   } catch {}
+
+  // Full diagnostic log for FAIL A. Kept at module scope (survives
+  // navigation) and rendered into a panel that's recreated each
+  // astro:page-load (the DOM gets swapped; the log data doesn't).
+  // This is meant to be read directly on the phone after unlocking it,
+  // not pulled from a devtools console the user can't easily attach
+  // while testing lock-screen behavior -- see PROGRESS.md for the full
+  // legend of what each line prefix means.
+  const debugLogLines: string[] = []
+  function debugLog(line: string) {
+    if (!debugMode) return
+    const t = (performance.now() / 1000).toFixed(2)
+    debugLogLines.push(`[${t}s] ${line}`)
+    renderDebugLog()
+  }
+  function renderDebugLog() {
+    if (!debugPanel) return
+    const body = debugPanel.querySelector("#sb-debug-log") as HTMLDivElement | null
+    if (!body) return
+    body.textContent = debugLogLines.join("\n")
+    body.scrollTop = body.scrollHeight
+  }
 
   let debugPanel: HTMLDivElement | null = null
   let debugStatusLine: HTMLDivElement | null = null
@@ -327,24 +359,47 @@
     if (debugPanel && document.body.contains(debugPanel)) return
     debugPanel = document.createElement("div")
     debugPanel.id = "sb-debug-panel"
+    // Anchored to the TOP, not the bottom -- the player bar and its
+    // own tap targets (play/prev/next, the mini bar on mobile) live at
+    // the bottom of the viewport, and a bottom-fixed panel tall enough
+    // to show a useful amount of log would sit on top of them and
+    // block every real control the person is trying to test. Found by
+    // a Playwright click failing with "subtree intercepts pointer
+    // events" on #next-btn with the panel open -- the same would block
+    // a real tap on a phone.
     debugPanel.style.cssText =
-      "position:fixed;bottom:0;left:0;right:0;max-height:35vh;overflow:auto;" +
+      "position:fixed;top:0;left:0;right:0;max-height:32vh;overflow:hidden;" +
+      "display:flex;flex-direction:column;" +
       "background:rgba(0,0,0,.88);color:#9f9;font:11px/1.4 monospace;" +
-      "padding:6px 8px;z-index:999999;white-space:pre-wrap;pointer-events:auto;"
+      "padding:6px 8px;z-index:999999;pointer-events:auto;"
     debugStatusLine = document.createElement("div")
     debugStatusLine.id = "sb-debug-status"
-    debugStatusLine.style.cssText = "color:#ff9;font-weight:bold;margin-bottom:4px;"
-    debugStatusLine.textContent = "analyser: --"
+    debugStatusLine.style.cssText = "color:#ff9;font-weight:bold;margin-bottom:4px;flex:none;"
+    debugStatusLine.textContent = noAnalyser ? "analyser: disabled (noanalyser=1)" : "analyser: --"
+    const logBody = document.createElement("div")
+    logBody.id = "sb-debug-log"
+    logBody.style.cssText = "overflow:auto;white-space:pre-wrap;flex:1;"
     debugPanel.appendChild(debugStatusLine)
+    debugPanel.appendChild(logBody)
     document.body.appendChild(debugPanel)
+    renderDebugLog()
   }
   function setAnalyserStatusLine() {
     if (!debugMode || !debugStatusLine) return
-    let mode = "sim"
-    if (analyser && !analyserFailed) {
+    let mode: string = noAnalyser ? "disabled (noanalyser=1)" : "sim"
+    if (!noAnalyser && analyser && !analyserFailed) {
       mode = audioCtx?.state === "suspended" ? "suspended" : "live"
     }
     debugStatusLine.textContent = `analyser: ${mode}`
+  }
+
+  // visibilitychange fires on lock/unlock and background/foreground --
+  // registered once, here, since `document` itself is the same object
+  // for the whole tab session regardless of client-side navigation.
+  if (debugMode) {
+    document.addEventListener("visibilitychange", () => {
+      debugLog(`visibilitychange: ${document.visibilityState}`)
+    })
   }
 
   let queue: QueueTrack[] = []
@@ -534,7 +589,7 @@
   // element, and since `audio` is now a singleton that's no longer a
   // "per element" constraint to work around, it's just "once, ever."
   function ensureAudioGraph() {
-    if (!audio || sourceNode || analyserFailed) return
+    if (!audio || sourceNode || analyserFailed || noAnalyser) return
     try {
       const AC = window.AudioContext || (window as any).webkitAudioContext
       if (!AC) {
@@ -542,6 +597,11 @@
         return
       }
       audioCtx = audioCtx || new AC()
+      if (debugMode) {
+        audioCtx.addEventListener("statechange", () => {
+          debugLog(`audioCtx statechange: ${audioCtx!.state}`)
+        })
+      }
       sourceNode = audioCtx.createMediaElementSource(audio)
       analyser = audioCtx.createAnalyser()
       analyser.fftSize = 1024
@@ -572,6 +632,10 @@
   // singleton rework exists to avoid in the first place.
   function prepareAnalyser(url: string) {
     if (!audio) return
+    if (noAnalyser) {
+      setAnalyserStatusLine()
+      return
+    }
     try {
       const origin = originOf(url)
       if (!origin) return
@@ -621,11 +685,28 @@
 
   function setupMediaSession() {
     if (!("mediaSession" in navigator)) return
-    navigator.mediaSession.setActionHandler("play", () => togglePlayback())
-    navigator.mediaSession.setActionHandler("pause", () => togglePlayback())
-    navigator.mediaSession.setActionHandler("previoustrack", () => goToPrev())
-    navigator.mediaSession.setActionHandler("nexttrack", () => goToNext())
+    // debugLog() is synchronous (array push + a DOM textContent write)
+    // -- it never introduces an await before the handler's own call,
+    // which must stay direct and synchronous for iOS to accept it as
+    // gesture-equivalent while the screen is locked.
+    navigator.mediaSession.setActionHandler("play", () => {
+      debugLog("mediaSession:play")
+      togglePlayback()
+    })
+    navigator.mediaSession.setActionHandler("pause", () => {
+      debugLog("mediaSession:pause")
+      togglePlayback()
+    })
+    navigator.mediaSession.setActionHandler("previoustrack", () => {
+      debugLog("mediaSession:previoustrack")
+      goToPrev()
+    })
+    navigator.mediaSession.setActionHandler("nexttrack", () => {
+      debugLog("mediaSession:nexttrack")
+      goToNext()
+    })
     navigator.mediaSession.setActionHandler("seekto", (details) => {
+      debugLog(`mediaSession:seekto ${details.seekTime}`)
       if (!audio) return
       const t = details.seekTime ?? audio.currentTime
       if (details.fastSeek && "fastSeek" in audio) {
@@ -696,10 +777,17 @@
     setErrorUI(false)
     paintTrackUI(track)
     prepareAnalyser(track.audioUrl)
+    debugLog(`src := ${track.audioUrl}`)
     audio.src = track.audioUrl
     if (autoplay) {
       resumeAudioContextIfNeeded()
-      audio.play().catch(() => {})
+      // .play() itself is still called synchronously, right here, in
+      // direct response to a user gesture or the `ended` event's
+      // auto-advance chain -- .then()/.catch() only observe what the
+      // already-dispatched call resolves to, they don't delay it.
+      audio.play().then(() => debugLog("play() resolved")).catch((err) => {
+        debugLog(`play() rejected: ${err?.name ?? err}`)
+      })
     }
     emitState()
   }
@@ -708,7 +796,9 @@
     if (!audio || !audio.src) return
     if (audio.paused) {
       resumeAudioContextIfNeeded()
-      audio.play().catch(() => {})
+      audio.play().then(() => debugLog("play() resolved")).catch((err) => {
+        debugLog(`play() rejected: ${err?.name ?? err}`)
+      })
     } else {
       audio.pause()
     }
@@ -779,10 +869,27 @@
   // always the same object).
   function wireAudio() {
     if (!audio) return
+
+    if (debugMode) {
+      for (const ev of [
+        "play", "pause", "playing", "waiting", "stalled", "ended",
+        "error", "emptied", "abort", "seeking", "seeked",
+        "loadstart", "canplay",
+      ]) {
+        audio.addEventListener(ev, () => {
+          if (!audio) return
+          debugLog(`audio:${ev} paused=${audio.paused} ct=${audio.currentTime.toFixed(2)} rs=${audio.readyState}`)
+        })
+      }
+    }
+
     audio.addEventListener("play", updatePlayIcon)
     audio.addEventListener("pause", updatePlayIcon)
     audio.addEventListener("ended", () => {
-      if (queue.length > 0) goToNext()
+      if (queue.length > 0) {
+        debugLog("ended -> auto-advance")
+        goToNext()
+      }
     })
 
     // Drives the visualizer's idle/energetic switch -- see the
