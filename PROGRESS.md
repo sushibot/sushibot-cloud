@@ -233,3 +233,152 @@ itself stalling, not a code path. Not something fixable in this repo.
    scrubbing exists only in the full-screen stage's seek bar (unchanged,
    still the 44px hit area).
 3. **Fixed — intentional POC deviation**: a track row click only plays/toggles, never auto-opens the stage; the stage opens only via the bar's info area, expand button, or the mobile mini bar.
+
+## Step 9c — iPhone/laptop round 2: split-second pause + dead visualizer
+
+**Status: issue 2 (visualizer) fixed, reviewed, pushed. Issue 1 (pause
+blip) investigated and root-caused; STOPPING at the human gate before
+any further action -- see "open question" below.**
+
+### Issue 2 — visualizer never reacted to the music
+
+Context given: a CORS rule went live on the R2 bucket (allowed origins
+sushibot.cloud, the staging workers.dev address, localhost:4321;
+GET/HEAD; Range). Bucket is still on r2.dev, no custom domain yet.
+
+**CORS probe, from the staging origin, against the real bucket** (`curl`
+with `Origin: https://staging-sushibot-cloud.gfontan1.workers.dev`):
+- `HEAD`: `200`, `Access-Control-Allow-Origin` echoes the staging
+  origin, `Accept-Ranges: bytes`, `Access-Control-Expose-Headers:
+  Content-Length,Content-Range,Accept-Ranges`.
+- `OPTIONS` preflight (with `Access-Control-Request-Headers: range`):
+  `204`, `Access-Control-Allow-Headers: range`, `Access-Control-Allow-
+  Methods: GET, HEAD`.
+- Range `GET` (`bytes=0-1023`): `206 Partial Content`, correct
+  `Content-Range`, same ACAO. Also confirmed `localhost:4321` is
+  allowed. **The CORS rule is live and correctly configured.** No
+  stale-cache headers seen -- nothing to purge.
+
+**But the real analyser still never activated, on staging or locally,
+even against the production bucket with working CORS.** Found the
+actual bug: `src/components/PlayerBar.astro`'s `checkCorsAsync()`
+required both `res.ok` **and** `res.headers.has("access-control-allow-
+origin")` before trusting a track's origin for CORS. The second check
+was never true: browsers only expose a small safelisted set of
+response headers to JS unless the server adds more to `Access-Control-
+Expose-Headers`, and `Access-Control-Allow-Origin` was never in that
+list (nor should it need to be -- a `mode:"cors"` fetch's promise only
+resolves at all once the browser has already verified that header
+permits the page's origin; if it didn't, the fetch would reject, which
+was already handled). This made the gate permanently false regardless
+of how the bucket's CORS was set up -- not a bucket/DNS/custom-domain
+issue at all, a pure app bug. Fixed by trusting `res.ok` alone.
+
+Verified the fix with a proper before/after: stood up a tiny local
+Node CORS-fixture server (correct ACAO/Range/expose-headers) serving a
+short generated tone, and pointed the app's real network request at it
+via Playwright route interception. **Before the fix**: `crossOrigin`
+stayed `null`, `createMediaElementSource` and `AnalyserNode.
+getByteFrequencyData` were never called, even against this known-good
+fixture -- confirming the bug was unconditional. **After the fix**:
+`crossOrigin` becomes `"anonymous"`, `createMediaElementSource` fires,
+and `getByteFrequencyData` is called ~60×/sec while the stage is open
+-- confirmed both against the local fixture and against the real
+production bucket. (The real analyser only activates from a track's
+*second* play in a session -- the CORS probe for that origin is still
+in flight during the first; this was already the designed behavior,
+unchanged.) Reviewed `prepareAnalyser`/`ensureAudioGraph`/
+`resumeAudioContextIfNeeded`: `AudioContext` is created lazily (first
+real `loadTrack()` call, itself always a user-gesture-adjacent path),
+resumed-if-suspended before every play, and `crossOrigin`/
+`createMediaElementSource` are both still correctly gated on the
+(now-correct) CORS result -- no other issues found there.
+
+**Simulated-fallback fix**: the fallback already special-cased
+`audio.paused`, but `.paused` flips to `false` the instant `.play()`
+is called -- including while the element is still buffering and
+producing no sound. Added a dedicated `isActuallyPlaying` flag, driven
+by the `playing`/`waiting`/`stalled`/`pause`/`ended` events (the ones
+that distinguish "audibly producing sound right now" from "play() was
+requested"), and reset on every new track load. Verified by sampling
+canvas pixel-activity variance while playing vs. paused: playing
+≈137,000, paused ≈2,500 (~55× calmer) -- confirmed idle, not frozen,
+not still pulsing.
+
+**Large-file seeking + throttled time-to-first-sound** (files are
+large WAVs per your note; everything I could directly inspect on the
+live bucket right now -- `2012/progressive.mp3`, several other tracks
+across years -- was still MP3, 1.2–9.8MB, not 14–17MB WAV; flagging
+that discrepancy rather than guessing, in case the WAV upload hasn't
+landed on this bucket yet or I'm missing something). Tested against a
+locally-generated 15.9MB WAV (90s, matching your stated size) so the
+result reflects the app's own streaming behavior independent of the
+bucket's current real-network state (see below):
+- Seeking: jumped to ~75% of a 90s file, landed at 68.2s (expected
+  67.5s) -- correct, confirms Range-request seeking works on a large
+  file.
+- Time-to-first-sound under Chrome DevTools' "Slow 4G" profile (400
+  Kbps, 400ms latency): **346ms** from click to audibly playing.
+  `preload="none"` plus the browser's own partial-range fetching means
+  it only needs the first chunk, not the whole 15.9MB, so size didn't
+  meaningfully hurt startup time in this test.
+
+No bucket/CORS/DNS/audioUrl changes made, as instructed. No files
+converted.
+
+### Issue 1 — split-second pause on first-play-then-navigate (WebKit)
+
+Reproduced on a fresh WebKit load (play first track, then one client-
+side navigation), instrumented with full audio-event timestamps,
+tested against the local fixture to isolate this from the real
+bucket's current network state. Full sequence:
+
+```
+[AUDIO pause]          t=2350  paused=true  ct=0.898  inDoc=false   <- original element auto-paused on disconnect
+[AUDIO loadstart]       t=2350  (new, empty element)
+[AUDIO abort/emptied/play] t=2361  ct=0.898  (resume logic: new src, seek to 0.898, .play())
+[AUDIO waiting/loadstart]  t=2361-2362  (new network fetch starts)
+[AUDIO loadedmetadata]  t=2481
+[AUDIO canplay]         t=2489
+[AUDIO playing]         t=2489  <- audibly playing again
+```
+
+**Root cause, confirmed**: `#player-audio`'s `transition:persist` gets
+dropped by Astro's WebKit fallback swap (no `Element.moveBefore()`
+there) on the first navigation of a session, same mechanism as the
+full-outage bug fixed last round. The recovery logic added then (move
+state to module scope, detect the replacement, resume) works
+reliably, but a replacement element has no buffered network data --
+resuming it means a real, if brief, re-fetch. Measured gap in this
+run: **139ms** (disconnect to audibly-playing-again). Against the real
+bucket this would likely run somewhat longer depending on network
+conditions, but the mechanism is the same regardless of file size.
+
+**Attempted to prevent the drop** (not just recover from it), within
+the current DOM-persisted-node architecture: added `astro:before-swap`
+/`astro:after-swap` handlers that manually detach the *same* live
+`<audio>` node from the outgoing page and reinsert it into the
+incoming one with plain same-document DOM calls, bypassing Astro's own
+`transition:persist` for this element entirely. **This made things
+worse, not better**: it conflicts with Astro's own persistence
+handling for the parent `#player-bar` (which still uses
+`transition:persist` normally) -- in testing, the audio element ended
+up missing from the page entirely after navigation, a regression from
+the current (recovering) behavior. Reverted cleanly; verified the
+revert is back to the known-good, reliably-recovering state (full
+suite: 28/28 Chrome; WebKit 26/28 with the 2 failures being the
+already-identified real-bucket network degradation, not this bug --
+the two tests this bug specifically targets both pass).
+
+**Open question — stopping here per your instruction.** I don't see a
+way to prevent the underlying drop without either (a) a deeper, riskier
+rework of how `#player-bar` and `#player-audio` are persisted together
+(no concrete design in hand, and the one concrete attempt I tried made
+things worse), or (b) the detached `new Audio()` singleton, which
+would eliminate the gap entirely by decoupling playback from any DOM
+node Astro could touch -- but you asked me to stop and ask before
+adopting that, so I'm asking. The current, already-shipped recovery
+behavior is a large improvement over the original bug (full,
+permanent silence) and is down to a ~140ms blip; whether that's
+acceptable as the practical floor for this architecture, or whether
+it's worth the singleton rework, is your call.

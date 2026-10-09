@@ -305,6 +305,13 @@
   let lastKnownTime = 0
   let lastKnownPlaying = false
   let isSeeking = false
+  // Distinct from `!audio.paused`: .paused flips to false the instant
+  // .play() is called, even while the element is still buffering and
+  // producing no sound yet. The visualizer needs to know when playback
+  // has actually, audibly started (the "playing" event) vs. merely
+  // been requested, so a stall or a fresh track loading doesn't show
+  // the energetic pattern while nothing is actually audible.
+  let isActuallyPlaying = false
 
   let audio: HTMLAudioElement | null = null
   let knownAudio: HTMLAudioElement | null = null
@@ -430,12 +437,20 @@
   function checkCorsAsync(origin: string, sampleUrl: string) {
     if (corsChecking.has(origin)) return
     corsChecking.add(origin)
+    // A `mode:"cors"` fetch's promise only resolves at all once the
+    // browser has already verified the response's Access-Control-*
+    // headers permit this origin -- a disallowed origin makes the
+    // fetch reject (caught below), it never resolves with a non-ok
+    // response for that reason. Checking res.headers.has(...) on top
+    // of that was always false in practice: browsers only expose a
+    // small safelist of response headers to JS unless the server adds
+    // them to Access-Control-Expose-Headers, and Access-Control-Allow-
+    // Origin itself is never expected to be in that list (it's not
+    // something a page needs to read back) -- so this never activated
+    // the real analyser regardless of how the bucket's CORS was set.
     fetch(sampleUrl, { method: "HEAD", mode: "cors", cache: "no-store" })
       .then((res) => {
-        corsResolved.set(
-          origin,
-          res.ok && res.headers.has("access-control-allow-origin"),
-        )
+        corsResolved.set(origin, res.ok)
       })
       .catch(() => {
         corsResolved.set(origin, false)
@@ -504,6 +519,10 @@
     const track = queue[newIndex]
     if (!track) return
     index = newIndex
+    // A new src doesn't reliably fire "pause" in every engine -- reset
+    // explicitly so the visualizer doesn't carry the previous track's
+    // "playing" state into this one's buffering gap.
+    isActuallyPlaying = false
     bar.classList.add("has-track")
     syncBodyPadding(bar)
     npTitle.textContent = track.title
@@ -648,6 +667,25 @@
     audio.addEventListener("pause", updatePlayIcon)
     audio.addEventListener("ended", () => {
       if (queue.length > 0) goToNext()
+    })
+
+    // Drives the visualizer's idle/energetic switch -- see the
+    // isActuallyPlaying declaration above for why this isn't just
+    // !audio.paused.
+    audio.addEventListener("playing", () => {
+      isActuallyPlaying = true
+    })
+    audio.addEventListener("pause", () => {
+      isActuallyPlaying = false
+    })
+    audio.addEventListener("waiting", () => {
+      isActuallyPlaying = false
+    })
+    audio.addEventListener("stalled", () => {
+      isActuallyPlaying = false
+    })
+    audio.addEventListener("ended", () => {
+      isActuallyPlaying = false
     })
     audio.addEventListener("loadedmetadata", () => {
       if (!audio) return
@@ -903,7 +941,7 @@
 
         function targets(ts: number) {
           const out = new Array(N).fill(0)
-          if (!audio || audio.paused) {
+          if (!audio || !isActuallyPlaying) {
             if (!reduce)
               for (let i = 0; i < N; i++)
                 out[i] = 0.05 + 0.05 * (0.5 + 0.5 * Math.sin(ts / 600 + i * 0.55))
