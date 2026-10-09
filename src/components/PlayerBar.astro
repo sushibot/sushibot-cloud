@@ -7,18 +7,14 @@
   transition:persist
   transition:name="player-bar"
 >
-  <!-- No transition:persist here on purpose -- #player-bar above already
-       carries its whole subtree (including this element) across a
-       navigation as one kept node. Giving the audio element its OWN
-       transition:persist too (a child doubly persisted inside an
-       already-persisted parent) is what was silently dropping it on
-       the first navigation of a session in WebKit: the bar persisted
-       fine, but the nested persist directive on the audio element made
-       Astro try to move IT independently, and that move lost the node
-       instead of leaving it in place. See the resume-on-init fallback
-       in the client script below for the belt-and-suspenders case
-       where the bar itself fails to persist for some other reason. -->
-  <audio id="player-audio" preload="none"></audio>
+  <!-- No <audio> element here -- the audio object is a detached
+       singleton created once in the client script below (`new
+       Audio()`, module scope), not a DOM node at all. #player-bar
+       still keeps its own transition:persist for the UI chrome below
+       (title, buttons, progress display), but the audio itself is
+       never part of the document, so no Astro swap can ever find,
+       move, or drop it. See the module-scope comment in the script
+       for the WebKit/Chrome persistence issues this replaces. -->
 
   <div
     class="progress-border"
@@ -38,6 +34,7 @@
         <span class="np-title" id="np-title"></span>
       </button>
       <a class="np-album" id="np-album"></a>
+      <span class="np-error" id="np-error" role="status" hidden>Playback error — try another track</span>
     </div>
 
     <div class="controls">
@@ -281,29 +278,38 @@
     eraFg?: string
   }
 
-  // ---------- module scope, not inside initPlayerBar() ----------
-  // #player-bar's own transition:persist reliably keeps the bar itself
-  // (and ordinary children like the buttons and title) across a
-  // navigation. The nested <audio>, which also carries its own
-  // transition:persist, is a different story: WebKit doesn't implement
-  // Element.moveBefore(), so Astro's fallback swap there can drop a
-  // doubly-persisted descendant even though the parent survives --
-  // most reliably on a session's first navigation. Separately, even in
-  // engines where the node itself survives, a child that changes
-  // identity for any other reason (we've seen it after a few
-  // navigations in Chrome too) would otherwise silently lose its
-  // attached listeners.
-  //
-  // The fix is to stop depending on any single <audio> node staying
-  // alive: playback state (queue/index/elapsed time/playing-ness) and
-  // every function that touches audio all live at module scope, so
-  // initPlayerBar() can detect a replaced element on any navigation,
-  // re-attach its listeners, and resume exactly where it left off --
-  // regardless of why the old node went away.
+  // ---------- the audio element: a detached singleton, not a DOM node ----------
+  // Created exactly once, right here, when this script module first
+  // evaluates. Astro's ClientRouter swaps the DOM on navigation but
+  // never re-runs an already-loaded page module, so this one object
+  // outlives every navigation for the whole tab's session -- nothing
+  // in the document for Astro's swap to find, move, or drop. This
+  // replaces an earlier design where <audio> lived in the DOM behind
+  // #player-bar's transition:persist: that worked in Chrome but
+  // WebKit doesn't implement Element.moveBefore(), so its fallback
+  // swap could drop a persisted child even though the parent survived
+  // -- recoverable (a later round made the recovery reliable), but a
+  // replacement element has no buffered network data, so resuming it
+  // always cost a brief, audible re-fetch. A singleton that's never
+  // part of the document removes the failure mode entirely rather
+  // than recovering from it.
+  let audio: HTMLAudioElement | null = null
+  let audioUnavailable = false
+  try {
+    audio = new Audio()
+    audio.preload = "none"
+    // Test-only hook: the singleton has no DOM presence anymore for
+    // Playwright (or anything else) to find via getElementById, so
+    // expose a reference for inspection. Read-only in spirit -- no
+    // production code reads this back.
+    ;(window as any).__playerAudio = audio
+  } catch {
+    audio = null
+    audioUnavailable = true
+  }
+
   let queue: QueueTrack[] = []
   let index = -1
-  let lastKnownTime = 0
-  let lastKnownPlaying = false
   let isSeeking = false
   // Distinct from `!audio.paused`: .paused flips to false the instant
   // .play() is called, even while the element is still buffering and
@@ -312,9 +318,10 @@
   // been requested, so a stall or a fresh track loading doesn't show
   // the energetic pattern while nothing is actually audible.
   let isActuallyPlaying = false
+  let playbackError = false
 
-  let audio: HTMLAudioElement | null = null
-  let knownAudio: HTMLAudioElement | null = null
+  // UI element refs -- unlike `audio` above, these DO live in the
+  // swapped DOM and are re-queried on every astro:page-load.
   let bar: HTMLElement | null = null
   let playBtn: HTMLButtonElement | null = null
   let playIcon: HTMLSpanElement | null = null
@@ -326,6 +333,7 @@
   let totTimeEl: HTMLSpanElement | null = null
   let npTitle: HTMLDivElement | null = null
   let npAlbum: HTMLAnchorElement | null = null
+  let npErrorEl: HTMLSpanElement | null = null
   let progressFill: HTMLDivElement | null = null
   let progressBorder: HTMLDivElement | null = null
   let npEl: HTMLDivElement | null = null
@@ -388,12 +396,9 @@
       drawerPlayIcon.className = audio.paused ? "ic-play" : "ic-pause"
       drawerPlayBtn.setAttribute("aria-label", audio.paused ? "Play" : "Pause")
     }
-    // Browsers auto-pause a <audio> element the instant it's
-    // disconnected from the document -- that fires this same "pause"
-    // listener, but it isn't a real user pause, and trusting it would
-    // erase the "should resume" signal the recovery path on the next
-    // page needs the moment before it can even use it.
-    if (document.contains(audio)) lastKnownPlaying = !audio.paused
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = audio.paused ? "paused" : "playing"
+    }
     emitState()
   }
 
@@ -423,7 +428,13 @@
     if (drawerNextBtn) drawerNextBtn.disabled = queue.length === 0
   }
 
-  // ---------- step 8: CORS capability check + real analyser (additive) ----------
+  function setErrorUI(hasError: boolean) {
+    playbackError = hasError
+    if (npErrorEl) npErrorEl.hidden = !hasError
+    bar?.classList.toggle("has-error", hasError)
+  }
+
+  // ---------- CORS capability check + real analyser ----------
   // Per-origin cache so a HEAD request isn't repeated for every track.
   const corsResolved = new Map<string, boolean>()
   const corsChecking = new Set<string>()
@@ -441,13 +452,10 @@
     // browser has already verified the response's Access-Control-*
     // headers permit this origin -- a disallowed origin makes the
     // fetch reject (caught below), it never resolves with a non-ok
-    // response for that reason. Checking res.headers.has(...) on top
-    // of that was always false in practice: browsers only expose a
-    // small safelist of response headers to JS unless the server adds
-    // them to Access-Control-Expose-Headers, and Access-Control-Allow-
-    // Origin itself is never expected to be in that list (it's not
-    // something a page needs to read back) -- so this never activated
-    // the real analyser regardless of how the bucket's CORS was set.
+    // response for that reason. Checking for the ACAO header's
+    // presence on top of that is unnecessary and was always false in
+    // practice (browsers don't expose it to JS unless the server adds
+    // it to Access-Control-Expose-Headers, which it has no reason to).
     fetch(sampleUrl, { method: "HEAD", mode: "cors", cache: "no-store" })
       .then((res) => {
         corsResolved.set(origin, res.ok)
@@ -463,12 +471,10 @@
   let sourceNode: MediaElementAudioSourceNode | null = null
   let analyserFailed = false
 
-  // Only ever wires the graph once per element (createMediaElementSource
-  // throws on a second call), and only once CORS is confirmed for the
-  // track's origin -- otherwise the element is left exactly as it is
-  // today and the simulation drives the visualizer instead. Resets
-  // whenever the audio element itself changes (see wireAudioElement)
-  // since a graph built on a since-discarded element is useless.
+  // Wires the graph exactly once for the whole session --
+  // createMediaElementSource throws on a second call for the same
+  // element, and since `audio` is now a singleton that's no longer a
+  // "per element" constraint to work around, it's just "once, ever."
   function ensureAudioGraph() {
     if (!audio || sourceNode || analyserFailed) return
     try {
@@ -493,13 +499,25 @@
     }
   }
 
+  // crossOrigin is decided exactly once per track, here, strictly
+  // before .src is assigned for it in loadTrack() below -- and never
+  // touched again for that same load. If the CORS probe for this
+  // track's origin hasn't resolved yet (most commonly: this is the
+  // very first track played this session, right as the user taps
+  // play), crossOrigin is simply left unset for THIS track -- the real
+  // analyser won't activate until a later track, once the probe has
+  // had time to resolve in the background. We never retroactively flip
+  // crossOrigin on a load that's already in flight: changing it after
+  // the fact can force the browser to redo the fetch, which is exactly
+  // the kind of mid-playback disruption the singleton rework exists to
+  // avoid in the first place.
   function prepareAnalyser(url: string) {
     if (!audio) return
     try {
       const origin = originOf(url)
       if (!origin) return
       checkCorsAsync(origin, url)
-      if (corsResolved.get(origin) === true) {
+      if (corsResolved.get(origin) === true && audio.crossOrigin !== "anonymous") {
         audio.crossOrigin = "anonymous"
         ensureAudioGraph()
       }
@@ -514,15 +532,58 @@
     } catch {}
   }
 
-  function loadTrack(newIndex: number, autoplay = true, resumeAt = 0) {
-    if (!audio || !bar || !npTitle || !npAlbum || !playBtn) return
-    const track = queue[newIndex]
-    if (!track) return
-    index = newIndex
-    // A new src doesn't reliably fire "pause" in every engine -- reset
-    // explicitly so the visualizer doesn't carry the previous track's
-    // "playing" state into this one's buffering gap.
-    isActuallyPlaying = false
+  function updateMediaSessionMetadata(track: QueueTrack) {
+    if (!("mediaSession" in navigator) || typeof MediaMetadata === "undefined") return
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title,
+        artist: track.album ?? "SushiCloud",
+        album: track.album ?? "",
+        // No per-track artwork exists in the content model -- using
+        // the site's own brand image for every track rather than
+        // inventing per-track art that isn't there.
+        artwork: [{ src: "/album-art/sushibot.jpg", sizes: "965x928", type: "image/jpeg" }],
+      })
+    } catch {}
+  }
+
+  function updatePositionState() {
+    if (!("mediaSession" in navigator) || !audio) return
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: audio.duration,
+        playbackRate: audio.playbackRate || 1,
+        position: Math.min(audio.currentTime, audio.duration),
+      })
+    } catch {}
+  }
+
+  function setupMediaSession() {
+    if (!("mediaSession" in navigator)) return
+    navigator.mediaSession.setActionHandler("play", () => togglePlayback())
+    navigator.mediaSession.setActionHandler("pause", () => togglePlayback())
+    navigator.mediaSession.setActionHandler("previoustrack", () => goToPrev())
+    navigator.mediaSession.setActionHandler("nexttrack", () => goToNext())
+    navigator.mediaSession.setActionHandler("seekto", (details) => {
+      if (!audio) return
+      const t = details.seekTime ?? audio.currentTime
+      if (details.fastSeek && "fastSeek" in audio) {
+        ;(audio as any).fastSeek(t)
+      } else {
+        audio.currentTime = t
+      }
+    })
+  }
+
+  // Paints every piece of UI (bar + stage) for a given track. Called
+  // both when a NEW track starts (from loadTrack()) and when resyncing
+  // an already-playing track's info into a freshly-swapped page (see
+  // initPlayerBar() below) -- the audio itself never stopped across a
+  // navigation, but the DOM it's reflected into is brand new every
+  // time and has to be told what's currently loaded.
+  function paintTrackUI(track: QueueTrack) {
+    if (!bar || !npTitle || !npAlbum) return
     bar.classList.add("has-track")
     syncBodyPadding(bar)
     npTitle.textContent = track.title
@@ -559,20 +620,27 @@
         drawerDecal.hidden = true
       }
     }
-    prepareAnalyser(track.audioUrl)
-    audio.src = track.audioUrl
-    if (resumeAt > 0) audio.currentTime = resumeAt
-    if (autoplay) {
-      resumeAudioContextIfNeeded()
-      lastKnownPlaying = true
-      audio.play().catch(() => {
-        lastKnownPlaying = false
-      })
-    }
-    playBtn.disabled = false
+    if (playBtn) playBtn.disabled = false
     if (drawerPlayBtn) drawerPlayBtn.disabled = false
     if (drawerSeek) drawerSeek.disabled = false
     updateNav()
+    updateMediaSessionMetadata(track)
+  }
+
+  function loadTrack(newIndex: number, autoplay = true) {
+    if (!audio || audioUnavailable) return
+    const track = queue[newIndex]
+    if (!track) return
+    index = newIndex
+    isActuallyPlaying = false
+    setErrorUI(false)
+    paintTrackUI(track)
+    prepareAnalyser(track.audioUrl)
+    audio.src = track.audioUrl
+    if (autoplay) {
+      resumeAudioContextIfNeeded()
+      audio.play().catch(() => {})
+    }
     emitState()
   }
 
@@ -580,12 +648,8 @@
     if (!audio || !audio.src) return
     if (audio.paused) {
       resumeAudioContextIfNeeded()
-      lastKnownPlaying = true
-      audio.play().catch(() => {
-        lastKnownPlaying = false
-      })
+      audio.play().catch(() => {})
     } else {
-      lastKnownPlaying = false
       audio.pause()
     }
   }
@@ -649,20 +713,12 @@
     openerEl = null
   }
 
-  // Attaches the listeners that live directly on the <audio> element.
-  // Called on every initPlayerBar() run, but only actually does
-  // anything the first time it sees a given element -- so it's safe to
-  // call unconditionally, and it's what makes a replaced element (see
-  // the module-scope comment above) pick up working playback again.
-  // Returns whether `audio` was a new element this call.
-  function wireAudioElement(): boolean {
-    if (!audio || audio === knownAudio) return false
-    knownAudio = audio
-    sourceNode = null
-    analyser = null
-    freqData = null
-    analyserFailed = false
-
+  // Attaches every listener that lives directly on the audio object --
+  // called exactly once, right after the singleton is constructed
+  // above, not per astro:page-load (there's nothing to re-wire: it's
+  // always the same object).
+  function wireAudio() {
+    if (!audio) return
     audio.addEventListener("play", updatePlayIcon)
     audio.addEventListener("pause", updatePlayIcon)
     audio.addEventListener("ended", () => {
@@ -674,6 +730,7 @@
     // !audio.paused.
     audio.addEventListener("playing", () => {
       isActuallyPlaying = true
+      setErrorUI(false)
     })
     audio.addEventListener("pause", () => {
       isActuallyPlaying = false
@@ -687,21 +744,19 @@
     audio.addEventListener("ended", () => {
       isActuallyPlaying = false
     })
+    audio.addEventListener("error", () => {
+      isActuallyPlaying = false
+      setErrorUI(true)
+    })
     audio.addEventListener("loadedmetadata", () => {
       if (!audio) return
       if (totTimeEl) totTimeEl.textContent = fmt(audio.duration)
       if (drawerTotTime) drawerTotTime.textContent = fmt(audio.duration)
       if (drawerSeek) drawerSeek.max = String(Math.floor(audio.duration * 1000))
+      updatePositionState()
     })
     audio.addEventListener("timeupdate", () => {
       if (!audio) return
-      lastKnownTime = audio.currentTime
-      // Also kept fresh here, not just by the "play"/"pause" events --
-      // .paused flips synchronously the instant .play()/.pause() is
-      // called, but the events themselves fire asynchronously, so a
-      // navigation landing in that gap would otherwise resume as
-      // paused even though playback had actually started.
-      if (document.contains(audio)) lastKnownPlaying = !audio.paused
       if (isSeeking) return
       if (curTimeEl) curTimeEl.textContent = fmt(audio.currentTime)
       if (drawerCurTime) drawerCurTime.textContent = fmt(audio.currentTime)
@@ -710,16 +765,18 @@
         setRangeProgress(drawerSeek)
       }
       syncProgress()
+      updatePositionState()
     })
-    return true
+
+    setupMediaSession()
   }
+  wireAudio()
 
   function initPlayerBar() {
     bar = document.getElementById("player-bar")
     if (!bar) return
     syncBodyPadding(bar)
 
-    audio = document.getElementById("player-audio") as HTMLAudioElement | null
     playBtn = document.getElementById("play-btn") as HTMLButtonElement | null
     playIcon = document.getElementById("play-icon") as HTMLSpanElement | null
     prevBtn = document.getElementById("prev-btn") as HTMLButtonElement | null
@@ -730,6 +787,7 @@
     totTimeEl = document.getElementById("tot-time") as HTMLSpanElement | null
     npTitle = document.getElementById("np-title") as HTMLDivElement | null
     npAlbum = document.getElementById("np-album") as HTMLAnchorElement | null
+    npErrorEl = document.getElementById("np-error") as HTMLSpanElement | null
     progressFill = document.getElementById("progress-fill") as HTMLDivElement | null
     progressBorder = document.getElementById("progress-border") as HTMLDivElement | null
     npEl = document.getElementById("np") as HTMLDivElement | null
@@ -760,8 +818,9 @@
     drawerDecalText = document.getElementById("drawer-decal-text") as HTMLSpanElement | null
     viz = document.getElementById("player-viz") as HTMLCanvasElement | null
 
+    if (!audio || audioUnavailable) return
+
     if (
-      !audio ||
       !playBtn ||
       !playIcon ||
       !prevBtn ||
@@ -779,26 +838,18 @@
       return
     }
 
-    // Always re-checked, regardless of whether the one-time setup below
-    // has already run for this bar: #player-audio can go missing or
-    // get replaced independently of the rest of the bar (see the
-    // module-scope comment above). Re-attach its listeners and resume
-    // playback on it if that just happened.
-    const isNewAudioElement = wireAudioElement()
-    // Snapshot before updatePlayIcon() below, which reads this fresh
-    // element's genuine (paused, nothing loaded) state and would
-    // otherwise overwrite lastKnownPlaying with "false" before the
-    // resume call three lines down gets a chance to read it.
-    const resumeIndex = index
-    const resumePlaying = lastKnownPlaying
-    const resumeTime = lastKnownTime
     audio.volume = 0.8
+
+    // The audio object never stopped across this navigation -- it's
+    // the same singleton it has always been. But the DOM it's
+    // reflected into is brand new every swap, so resync every bit of
+    // UI directly from its live state here rather than relying on
+    // whatever events happen to have already fired by this point.
     syncProgress()
     updatePlayIcon()
     updateNav()
-    if (isNewAudioElement && queue[resumeIndex]) {
-      loadTrack(resumeIndex, resumePlaying, resumeTime)
-    }
+    if (index >= 0 && queue[index]) paintTrackUI(queue[index])
+    setErrorUI(playbackError)
 
     if (bar.dataset.initialized === "true") return
     bar.dataset.initialized = "true"
@@ -889,7 +940,7 @@
 
     document.addEventListener("player:query", emitState)
 
-    // ---------- step 8: --minih (mini bar height) for page bottom padding ----------
+    // ---------- --minih (mini bar height) for page bottom padding ----------
     function initMinih() {
       function set() {
         document.documentElement.style.setProperty(
@@ -902,7 +953,7 @@
     }
     initMinih()
 
-    // ---------- step 8: stage spectrum -- real analyser with a 118 BPM
+    // ---------- stage spectrum -- real analyser with a 118 BPM
     // simulated fallback, matching the home page's About spectrum pattern ----------
     if (viz) {
       const ctx = viz.getContext("2d")
@@ -1151,6 +1202,18 @@
   .np-album[href]:hover {
     color: var(--pop);
     text-decoration: underline;
+  }
+  .np-error {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--pop);
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .controls {

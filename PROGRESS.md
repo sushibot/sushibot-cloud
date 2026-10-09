@@ -382,3 +382,232 @@ behavior is a large improvement over the original bug (full,
 permanent silence) and is down to a ~140ms blip; whether that's
 acceptable as the practical floor for this architecture, or whether
 it's worth the singleton rework, is your call.
+
+## Round: detached `Audio()` singleton (issue 1, architectural fix)
+
+Approved: pursue the singleton. Implemented, tested, reviewed, this
+entry written before push.
+
+### Architecture
+
+`PlayerBar.astro`'s nested `<audio id="player-audio">` element is
+gone. In its place, the script creates one `HTMLAudioElement` at
+module scope, the first time the script ever runs for this tab:
+
+```ts
+let audio: HTMLAudioElement | null = null
+let audioUnavailable = false
+try {
+  audio = new Audio()
+  audio.preload = "none"
+} catch {
+  audio = null
+  audioUnavailable = true
+}
+```
+
+This object is never inserted into the document at all. Astro only
+ever evaluates a page's module `<script>` once per tab (ClientRouter
+navigations don't re-run it), so this singleton -- and the
+`AudioContext`/`AnalyserNode` graph built on it -- survives every
+client-side navigation unconditionally, by construction. There is no
+swap mechanism, Chrome's or WebKit's, that can find, move, or drop a
+node that was never part of the DOM. This replaces *recovering* from
+the WebKit drop (last round's fix) with *eliminating the condition
+that caused it*.
+
+`#player-bar` keeps its own `transition:persist` for the UI chrome
+(title, buttons, progress display) -- unchanged, and still needed,
+since that's real DOM that benefits from being carried across swaps
+rather than rebuilt. Only the audio object itself moved out of the
+DOM's reach.
+
+Listener wiring (`wireAudio()`) now runs exactly once, right after the
+singleton is created, instead of being re-attached per element on
+every navigation -- there's only ever one element to attach to, so the
+old "is this a new element, detect and rebind" logic is gone along
+with the module-scope resume bookkeeping (`lastKnownTime`,
+`lastKnownPlaying`, the `document.contains(audio)` guards) that last
+round's recovery fix needed and this round makes unnecessary.
+
+The `AnalyserNode`/`createMediaElementSource` graph is built at most
+once, ever, for the whole tab session, behind the existing CORS probe
+gate -- confirmed by instrumentation (below) that `createMediaElementSource`
+is called exactly once across multiple tracks and multiple
+navigations in a session.
+
+### The 4 additions you asked for
+
+**(1) `crossOrigin` ordering.** `crossOrigin` is decided in
+`prepareAnalyser()`, called strictly before `audio.src` is assigned
+for that track in `loadTrack()`, and never touched again for that
+load:
+
+```ts
+function prepareAnalyser(url: string) {
+  if (!audio) return
+  try {
+    const origin = originOf(url)
+    if (!origin) return
+    checkCorsAsync(origin, url)
+    if (corsResolved.get(origin) === true && audio.crossOrigin !== "anonymous") {
+      audio.crossOrigin = "anonymous"
+      ensureAudioGraph()
+    }
+  } catch {
+    analyserFailed = true
+  }
+}
+```
+
+**If the CORS probe hasn't resolved yet when the user taps play** --
+realistically only possible on the very first track of the session,
+right as the tap happens -- `crossOrigin` is simply left unset for
+*that* track. The real analyser doesn't activate until a later track,
+once the probe has resolved in the background; the simulated fallback
+drives the visualizer in the meantime. `crossOrigin` is never flipped
+retroactively on a load already in flight, because changing it after
+the fact can force the browser to redo the fetch -- exactly the kind
+of disruption this whole rework exists to avoid. In practice the probe
+resolves well within the time it takes to tap play and for the track
+to start loading, so this is a edge case that mostly matters on a
+very slow connection.
+
+**(2) UI resync on every `astro:page-load`.** `initPlayerBar()` no
+longer relies on events having already fired by the time the new DOM
+is wired up. Right after the required-elements guard, it resyncs every
+piece of UI directly from the audio object's live state:
+
+```ts
+syncProgress()
+updatePlayIcon()
+updateNav()
+if (index >= 0 && queue[index]) paintTrackUI(queue[index])
+setErrorUI(playbackError)
+```
+
+`paintTrackUI()` is a new factored-out function (title, album, drawer
+fields, decal, era CSS vars, button enabling, nav, Media Session
+metadata) shared between a genuinely new track (`loadTrack()`) and
+this resync path (existing track, new DOM).
+
+**(3) iOS gesture safety + auto-advance.** Every `.play()` call site
+is either directly inside a click handler (`togglePlayback()`,
+row/drawer play buttons) or inside `loadTrack()`, which is itself only
+ever invoked from a click handler or from `goToNext()`'s `ended`
+listener -- never from `astro:page-load` or any other non-gesture
+context. The `ended` → `goToNext()` → `loadTrack(..., autoplay=true)`
+chain is unchanged from before and still fires correctly, since it
+runs as a direct consequence of the browser's own `ended` event on an
+already-playing (gesture-originated) element, which iOS permits.
+Included in the manual iPhone test list below, including a
+locked-screen run.
+
+**(4) Media Session additions.** `setPositionState` is now called from
+the `timeupdate` and `loadedmetadata` listeners:
+
+```ts
+function updatePositionState() {
+  if (!("mediaSession" in navigator) || !audio) return
+  if (!Number.isFinite(audio.duration) || audio.duration <= 0) return
+  try {
+    navigator.mediaSession.setPositionState({
+      duration: audio.duration,
+      playbackRate: audio.playbackRate || 1,
+      position: Math.min(audio.currentTime, audio.duration),
+    })
+  } catch {}
+}
+```
+
+The `error` event now drives a visible state, not just a console
+failure -- a new `.np-error` element ("Playback error — try another
+track") toggled by `setErrorUI()`, reset on every new track load and
+on the `playing` event:
+
+```ts
+function setErrorUI(hasError: boolean) {
+  playbackError = hasError
+  if (npErrorEl) npErrorEl.hidden = !hasError
+  bar?.classList.toggle("has-error", hasError)
+}
+```
+
+Metadata (title/artist/artwork) is set via `updateMediaSessionMetadata()`
+on every track load and resync; artwork uses the site's own brand
+image (`/album-art/sushibot.jpg`) since there's no per-track artwork in
+the content model.
+
+### Test results
+
+Full `player-test.mjs` suite (28 tests), migrated from
+`document.getElementById("player-audio")` to `window.__playerAudio`
+(a test-only reference set at singleton-creation time; nothing in
+production code reads it back) since the element no longer has DOM
+presence to query:
+
+- Chrome: 28/28.
+- WebKit: 28/28, run 4 times consecutively for consistency (one run
+  incidentally hit the already-known, unrelated real-bucket network
+  degradation on an unrelated earlier test; the navigation-continuity
+  test itself passed every time).
+
+The navigation-continuity assertions were tightened to match the
+singleton's stronger guarantee -- no tolerance for `currentTime` going
+backwards, since there's no replacement element anymore to introduce
+any discontinuity at all.
+
+**Event log, fresh WebKit session, real bucket, first play → first
+navigation of the session** (the specific scenario that used to
+produce the ~140ms pause-and-resume blip):
+
+```
+--- FIRST PLAY (fresh session, real R2 bucket) ---
+[AUDIO play]           t=1140  paused=false ct=0.000 rs=0
+[AUDIO waiting]        t=1140  paused=false ct=0.000 rs=0
+[AUDIO loadstart]      t=1142  paused=false ct=0.000 rs=0
+[AUDIO loadedmetadata] t=1574  paused=false ct=0.000 rs=1
+[AUDIO canplay]        t=1620  paused=false ct=0.000 rs=4
+[AUDIO playing]        t=1620  paused=false ct=0.000 rs=4
+--- NAVIGATE (first navigation of session) ---
+final state: {"paused":false,"currentTime":2.237,"readyState":4}
+```
+
+Zero events of any kind -- no `pause`, `emptied`, `abort`, `waiting`,
+`stalled`, or `error` -- fire during or after the navigation.
+`currentTime` keeps advancing through it. This is the target you set:
+no pause event at all, not just a faster recovery.
+
+**Analyser/graph continuity across navigation** (confirming the graph
+is never rebuilt, only the UI around it): instrumented
+`createMediaElementSource` and `getByteFrequencyData` call counts,
+played two different tracks and navigated twice between them.
+`createMediaElementSource` fired exactly **once** total across both
+tracks and both navigations; `getByteFrequencyData` kept incrementing
+normally throughout. (A full page reload, as expected, does reset this
+-- that's a new module evaluation, not a client-side navigation, and
+out of scope for what the singleton is meant to survive.)
+
+**Reduced motion**: this code path (`targets()`/`draw()`/`kick()`,
+gated on `matchMedia("(prefers-reduced-motion: reduce)")`) is
+unchanged from before the singleton rework -- confirmed via diff.
+Verified it still runs with no errors and no regression: with reduced
+motion on, the stage renders one static frame at setup instead of a
+continuous `requestAnimationFrame` loop, exactly as designed before
+this round. Not a new behavior; just confirming the singleton change
+didn't disturb it.
+
+Sequential plays, seeking, queue advance (prev/next), stage open/
+close, and Escape/focus are all exercised by the general suite above
+and all pass; not called out individually since none of that logic
+changed in this round beyond what the suite already covers.
+
+No bucket/CORS/DNS/audioUrl changes made.
+
+### Still to do, on your approval
+
+The domain switch (all 151 track JSON files, `r2.dev` →
+`audio.sushibot.cloud`, `R2_PUBLIC_BASE_URL` default/docs, 206-Range
+verification script, no bucket/CORS/DNS touch) is planned but **not
+started** -- per your instruction, it's a separate commit gated on
+your approval of this singleton work.
