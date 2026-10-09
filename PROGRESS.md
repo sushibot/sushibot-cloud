@@ -604,10 +604,44 @@ changed in this round beyond what the suite already covers.
 
 No bucket/CORS/DNS/audioUrl changes made.
 
-### Still to do, on your approval
+## iPhone/laptop test results on e782845: 2 new issues, plan
 
-The domain switch (all 151 track JSON files, `r2.dev` →
-`audio.sushibot.cloud`, `R2_PUBLIC_BASE_URL` default/docs, 206-Range
-verification script, no bucket/CORS/DNS touch) is planned but **not
-started** -- per your instruction, it's a separate commit gated on
-your approval of this singleton work.
+Your zero-pause navigation, skip/seek, auto-advance (unlocked), and
+stage results all passed. Two failures:
+
+- **FAIL A** (iPhone only): after the first lock-screen track, a skip
+  or auto-advance to the next track doesn't play while the screen is
+  locked. Lock screen still shows title/artist. First track is fine.
+- **FAIL B** (iPhone and laptop, not iOS-specific): sometimes on first
+  play the viz doesn't sync to the music.
+
+Approved plan, in order: domain switch (below), FAIL B fix, FAIL A
+instrumentation-only (no fix until your logs pick a cause).
+
+## Round: domain switch (r2.dev → audio.sushibot.cloud)
+
+Separate commit, as instructed. No bucket/CORS/DNS changes -- the
+custom domain was already live on the bucket; this only repoints the
+151 track JSON files' `audioUrl` host.
+
+- Verified `audio.sushibot.cloud` was already serving correctly
+  (206, correct ACAO for the staging origin) before touching any
+  files, to avoid bulk-editing against a domain that wasn't ready.
+- Replaced the host only
+  (`pub-698e1d4bc0b741bc9e3e3863401f2086.r2.dev` →
+  `audio.sushibot.cloud`) in all 151 files under
+  `src/content/tracks/**/*.json`; the `/web/<year>/<slug>.mp3` key
+  path is untouched, confirmed via diff on a sample file and a
+  repo-wide grep for the old host (zero remaining references anywhere,
+  including this doc's own history above).
+- `scripts/sync-r2-music.mjs`: added a one-line doc comment stating
+  production's `R2_PUBLIC_BASE_URL` is `https://audio.sushibot.cloud`.
+  No default/fallback value added to the code and no new helper, per
+  your instruction -- the env var stays required with nothing to fall
+  back to if it's ever unset.
+- Verification script (`verify-range-206.mjs`, not committed --
+  one-off): checked all 151 resulting URLs for `Range: bytes=0-1`
+  with `Origin: https://staging-sushibot-cloud.gfontan1.workers.dev`,
+  expecting 206. **151/151 returned 206.** No failures to report.
+- `npm run build` completes clean, 18 pages.
+- No bucket, CORS, or DNS changes made.

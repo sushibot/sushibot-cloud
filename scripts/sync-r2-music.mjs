@@ -6,6 +6,10 @@
 // Originals in R2 are never modified. For each track, a 192kbps MP3 is
 // transcoded and uploaded back to R2 under web/<year>/<slug>.mp3, and that
 // public URL becomes the track's audioUrl.
+//
+// R2_PUBLIC_BASE_URL in production is https://audio.sushibot.cloud (a
+// custom domain on the bucket). No default is set here deliberately --
+// get it wrong and every track's audioUrl silently points somewhere else.
 
 import {
 	S3Client,
