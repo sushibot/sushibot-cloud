@@ -30,74 +30,130 @@
 
   <div class="player-inner">
     <div class="np" id="np">
-      <button class="np-open" id="np-open" type="button" aria-label="Open player">
-        <span class="np-title" id="np-title"></span>
-      </button>
-      <a class="np-album" id="np-album"></a>
-      <span class="np-error" id="np-error" role="status" hidden>Playback error — try another track</span>
-    </div>
-
-    <div class="controls">
-      <button
-        class="tbtn"
-        id="prev-btn"
-        type="button"
-        aria-label="Previous track"
-        disabled
-      >
-        <span class="ic-skip prev"></span>
-      </button>
-      <button
-        class="tbtn play"
-        id="play-btn"
-        type="button"
-        aria-label="Play"
-        disabled
-      >
-        <span class="ic-play" id="play-icon"></span>
-      </button>
-      <button
-        class="tbtn"
-        id="next-btn"
-        type="button"
-        aria-label="Next track"
-        disabled
-      >
-        <span class="ic-skip"></span>
-      </button>
-    </div>
-
-    <!-- Display only -- the bar shows playback position, it doesn't
-         scrub it. Dragging/seeking lives only in the full-screen stage
-         (#drawer-seek, a real range input with a 44px hit area). -->
-    <div class="progress-row">
-      <span class="time" id="cur-time">0:00</span>
-      <div
-        class="bar-progress"
-        id="bar-progress"
-        role="progressbar"
-        aria-label="Playback progress"
-        aria-valuemin="0"
-        aria-valuemax="100"
-        aria-valuenow="0"
-      >
-        <div class="bar-progress-fill" id="bar-progress-fill"></div>
+      <!-- Desktop only (>=980px). No cover-art field exists anywhere
+           in the content model (checked QueueTrack and every track/
+           album JSON) -- every track renders this same era-colored,
+           chamfered placeholder with its track number. Never invents
+           art. -->
+      <div class="np-art" id="np-art" aria-hidden="true">
+        <span class="np-art-num" id="np-art-num"></span>
       </div>
-      <span class="time now" id="tot-time">0:00</span>
+      <div class="np-text">
+        <button class="np-open" id="np-open" type="button" aria-label="Open player">
+          <span class="np-title" id="np-title"></span>
+        </button>
+        <!-- .np-sub is display:contents on mobile (a no-op wrapper --
+             .np-album stacks exactly as it did as a direct .np-text
+             child) and a flex row only at desktop width, so np-album
+             and np-year sit on one "Album · Year" line there. -->
+        <span class="np-sub">
+          <a class="np-album" id="np-album"></a>
+          <!-- Desktop only -- "· year" suffix. A new, separate
+               element rather than appending year onto np-album's own
+               text: np-album is shared with mobile, and mobile's text
+               must not change. -->
+          <span class="np-year" id="np-year"></span>
+        </span>
+      </div>
     </div>
 
-    <button class="expand-btn" id="expand-btn" type="button" aria-label="Open player">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.4"
-        stroke-linecap="square"
-        aria-hidden="true"
-      >
-        <path d="M6 15l6-6 6 6" />
-      </svg>
-    </button>
+    <div class="transport">
+      <div class="controls">
+        <button
+          class="tbtn"
+          id="prev-btn"
+          type="button"
+          aria-label="Previous track"
+          disabled
+        >
+          <span class="ic-skip prev"></span>
+        </button>
+        <button
+          class="tbtn play"
+          id="play-btn"
+          type="button"
+          aria-label="Play"
+          disabled
+        >
+          <span class="ic-play" id="play-icon"></span>
+        </button>
+        <button
+          class="tbtn"
+          id="next-btn"
+          type="button"
+          aria-label="Next track"
+          disabled
+        >
+          <span class="ic-skip"></span>
+        </button>
+      </div>
+
+      <!-- Desktop only -- a real, draggable, keyboard-accessible seek
+           input. The mobile progress-row below is untouched: still a
+           plain, non-interactive div, still role="progressbar". -->
+      <div class="bar-seek-row" id="bar-seek-row">
+        <span class="time" id="bar-cur-time">0:00</span>
+        <input
+          class="range bar-seek"
+          id="bar-seek"
+          type="range"
+          min="0"
+          max="1000"
+          value="0"
+          step="1"
+          aria-label="Seek"
+          disabled
+        />
+        <span class="time now" id="bar-tot-time">0:00</span>
+      </div>
+    </div>
+
+    <div class="right-controls">
+      <!-- Desktop only -- volume. Persisted to localStorage; wiring
+           and persistence land in the next phase, after the layout
+           sign-off. -->
+      <div class="volume" id="volume">
+        <button class="vol-btn" id="vol-btn" type="button" aria-label="Mute">
+          <svg
+            id="vol-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="square"
+            stroke-linejoin="miter"
+            aria-hidden="true"
+          >
+            <path d="M3 9v6h4l5 4V5L7 9H3z" />
+            <path d="M16 9a4 4 0 0 1 0 6" />
+            <path d="M19 6a8 8 0 0 1 0 12" />
+          </svg>
+        </button>
+        <input
+          class="range vol-slider"
+          id="vol-slider"
+          type="range"
+          min="0"
+          max="100"
+          value="80"
+          step="1"
+          aria-label="Volume"
+        />
+      </div>
+
+      <button class="expand-btn" id="expand-btn" type="button" aria-label="Open player">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.4"
+          stroke-linecap="square"
+          aria-hidden="true"
+        >
+          <path d="M6 15l6-6 6 6" />
+        </svg>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -520,18 +576,28 @@
   let playIcon: HTMLSpanElement | null = null
   let prevBtn: HTMLButtonElement | null = null
   let nextBtn: HTMLButtonElement | null = null
-  let barProgress: HTMLDivElement | null = null
-  let barProgressFill: HTMLDivElement | null = null
+  // Desktop only -- the bar's own interactive seek input (replaces the
+  // old non-interactive .bar-progress div entirely; it was already
+  // desktop-only -- hidden below 980px -- so nothing on mobile ever
+  // used it).
+  let barSeek: HTMLInputElement | null = null
   let curTimeEl: HTMLSpanElement | null = null
   let totTimeEl: HTMLSpanElement | null = null
   let npTitle: HTMLDivElement | null = null
   let npAlbum: HTMLAnchorElement | null = null
-  let npErrorEl: HTMLSpanElement | null = null
+  // Desktop only -- the album/year subtitle and the era-colored
+  // placeholder tile's track-number text.
+  let npYear: HTMLSpanElement | null = null
+  let npArtNum: HTMLSpanElement | null = null
   let progressFill: HTMLDivElement | null = null
   let progressBorder: HTMLDivElement | null = null
   let npEl: HTMLDivElement | null = null
   let npOpenBtn: HTMLButtonElement | null = null
   let expandBtn: HTMLButtonElement | null = null
+  // Desktop only -- volume.
+  let volBtn: HTMLButtonElement | null = null
+  let volIcon: SVGSVGElement | null = null
+  let volSlider: HTMLInputElement | null = null
   let drawer: HTMLDivElement | null = null
   let drawerCloseBtn: HTMLButtonElement | null = null
   let drawerTitle: HTMLDivElement | null = null
@@ -556,8 +622,10 @@
     return `${m}:${s < 10 ? "0" : ""}${s}`
   }
 
-  // Still used by #drawer-seek -- the stage's own range input, the
-  // only scrubbable one left.
+  // Shared by #drawer-seek and #bar-seek -- generic over any range
+  // input. #bar-seek isn't scrubbable yet (drag wiring is a later
+  // phase); syncProgress() calls this just to keep its thumb position
+  // visually in sync with playback in the meantime.
   function setRangeProgress(input: HTMLInputElement) {
     const min = Number(input.min) || 0
     const max = Number(input.max) || 100
@@ -567,16 +635,19 @@
     return pct
   }
 
-  // Drives both display-only progress indicators (the bar's own, and
-  // the mobile mini bar's top-edge line) straight from audio state --
-  // neither is backed by a range input anymore, so there's nothing to
-  // read a .value from.
+  // Drives both progress indicators straight from audio state: the
+  // desktop bar's own seek input (unless the user is actively
+  // dragging it -- see isSeeking below, same guard #drawer-seek
+  // already uses) and the mobile mini bar's top-edge line, which is
+  // still plain and non-interactive, untouched by this round.
   function syncProgress() {
-    if (!audio || !barProgress || !barProgressFill || !progressFill || !progressBorder) return
+    if (!audio || !progressFill || !progressBorder) return
     const pct = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0
     const rounded = String(Math.round(pct))
-    barProgressFill.style.width = `${pct}%`
-    barProgress.setAttribute("aria-valuenow", rounded)
+    if (barSeek && !isSeeking) {
+      barSeek.value = String(Math.floor(audio.currentTime * 1000))
+      setRangeProgress(barSeek)
+    }
     progressFill.style.width = `${pct}%`
     progressBorder.setAttribute("aria-valuenow", rounded)
   }
@@ -623,10 +694,17 @@
     if (drawerNextBtn) drawerNextBtn.disabled = queue.length === 0
   }
 
+  // No visible banner -- removed per direct instruction (deliberate
+  // deviation from the POC). A data-error attribute on the bar is the
+  // only on-page signal left, and it's intentionally unstyled: the
+  // real surfaces for this are console.error and the debug panel log,
+  // both wired at the error listener below.
   function setErrorUI(hasError: boolean, source: string) {
     playbackError = hasError
-    if (npErrorEl) npErrorEl.hidden = !hasError
-    bar?.classList.toggle("has-error", hasError)
+    if (bar) {
+      if (hasError) bar.setAttribute("data-error", "")
+      else bar.removeAttribute("data-error")
+    }
     debugLog(`setErrorUI(${hasError}) <- ${source}`)
   }
 
@@ -854,6 +932,15 @@
     } else {
       npAlbum.removeAttribute("href")
     }
+    // Desktop-only "· year" suffix, rendered right after .np-album on
+    // the same line (see the np-text CSS) -- a separate element so
+    // np-album's own text and link, shared with mobile, never change.
+    if (npYear) npYear.textContent = track.year != null ? `· ${track.year}` : ""
+    // Desktop-only placeholder tile: no cover-art field exists in the
+    // content model (checked), so this always renders -- the era
+    // color comes from the same --stage-era/-fg custom properties set
+    // just below, already used by the full-screen stage.
+    if (npArtNum) npArtNum.textContent = track.trackNum != null ? String(track.trackNum) : ""
     if (drawerTitle) drawerTitle.textContent = track.title
     if (drawerSub) {
       const parts: string[] = []
@@ -884,6 +971,7 @@
     if (playBtn) playBtn.disabled = false
     if (drawerPlayBtn) drawerPlayBtn.disabled = false
     if (drawerSeek) drawerSeek.disabled = false
+    if (barSeek) barSeek.disabled = false
     updateNav()
     updateMediaSessionMetadata(track)
   }
@@ -1033,6 +1121,24 @@
     })
     audio.addEventListener("error", () => {
       isActuallyPlaying = false
+      const err = audio?.error
+      const code = err?.code ?? 0
+      const message = err?.message || ""
+      // MediaError.code: 1 ABORTED, 2 NETWORK, 3 DECODE, 4 SRC_NOT_SUPPORTED.
+      const codeName =
+        ({ 1: "MEDIA_ERR_ABORTED", 2: "MEDIA_ERR_NETWORK", 3: "MEDIA_ERR_DECODE", 4: "MEDIA_ERR_SRC_NOT_SUPPORTED" } as Record<number, string>)[code] ??
+        `unknown (${code})`
+      const detail = `${codeName}${message ? ` -- ${message}` : ""}`
+      if (code === 1) {
+        // MEDIA_ERR_ABORTED is expected, not a real failure -- e.g. a
+        // fast track switch aborts the previous track's in-flight
+        // load. Logged for visibility but never treated as an error:
+        // no data-error, no console.error, no setErrorUI.
+        debugLog(`audio error ignored (${detail})`)
+        return
+      }
+      console.error(`[PlayerBar] audio error: ${detail}`)
+      debugLog(`audio error: ${detail}`)
       setErrorUI(true, "error-event")
     })
     audio.addEventListener("loadedmetadata", () => {
@@ -1040,6 +1146,7 @@
       if (totTimeEl) totTimeEl.textContent = fmt(audio.duration)
       if (drawerTotTime) drawerTotTime.textContent = fmt(audio.duration)
       if (drawerSeek) drawerSeek.max = String(Math.floor(audio.duration * 1000))
+      if (barSeek) barSeek.max = String(Math.floor(audio.duration * 1000))
       updatePositionState()
     })
     audio.addEventListener("timeupdate", () => {
@@ -1078,13 +1185,13 @@
     playIcon = document.getElementById("play-icon") as HTMLSpanElement | null
     prevBtn = document.getElementById("prev-btn") as HTMLButtonElement | null
     nextBtn = document.getElementById("next-btn") as HTMLButtonElement | null
-    barProgress = document.getElementById("bar-progress") as HTMLDivElement | null
-    barProgressFill = document.getElementById("bar-progress-fill") as HTMLDivElement | null
-    curTimeEl = document.getElementById("cur-time") as HTMLSpanElement | null
-    totTimeEl = document.getElementById("tot-time") as HTMLSpanElement | null
+    barSeek = document.getElementById("bar-seek") as HTMLInputElement | null
+    curTimeEl = document.getElementById("bar-cur-time") as HTMLSpanElement | null
+    totTimeEl = document.getElementById("bar-tot-time") as HTMLSpanElement | null
     npTitle = document.getElementById("np-title") as HTMLDivElement | null
     npAlbum = document.getElementById("np-album") as HTMLAnchorElement | null
-    npErrorEl = document.getElementById("np-error") as HTMLSpanElement | null
+    npYear = document.getElementById("np-year") as HTMLSpanElement | null
+    npArtNum = document.getElementById("np-art-num") as HTMLSpanElement | null
     progressFill = document.getElementById("progress-fill") as HTMLDivElement | null
     progressBorder = document.getElementById("progress-border") as HTMLDivElement | null
     npEl = document.getElementById("np") as HTMLDivElement | null
@@ -1093,6 +1200,12 @@
     // expand control.
     npOpenBtn = document.getElementById("np-open") as HTMLButtonElement | null
     expandBtn = document.getElementById("expand-btn") as HTMLButtonElement | null
+    // Desktop-only volume controls -- queried now so the layout phase
+    // can render them; mute/slider wiring and localStorage persistence
+    // land in the next phase, after the layout sign-off.
+    volBtn = document.getElementById("vol-btn") as HTMLButtonElement | null
+    volIcon = document.getElementById("vol-icon") as unknown as SVGSVGElement | null
+    volSlider = document.getElementById("vol-slider") as HTMLInputElement | null
 
     // Drawer elements are mobile-only UI; guard each use individually
     // rather than bailing out of the whole player if one is missing.
@@ -1122,8 +1235,7 @@
       !playIcon ||
       !prevBtn ||
       !nextBtn ||
-      !barProgress ||
-      !barProgressFill ||
+      !barSeek ||
       !curTimeEl ||
       !totTimeEl ||
       !npTitle ||
@@ -1457,6 +1569,34 @@
     min-width: 0;
     flex: 1 1 160px;
     display: flex;
+    align-items: center;
+    gap: 0;
+  }
+  /* Desktop only -- no cover-art field exists anywhere in the content
+     model (checked QueueTrack and every track/album JSON), so this
+     always renders the placeholder: never invents art. Era color
+     reuses --stage-era/-fg, the same custom properties the full-screen
+     stage already reads, set once per track in paintTrackUI(). */
+  .np-art {
+    display: none;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    background: var(--stage-era, var(--scarlet));
+    color: var(--stage-era-fg, var(--bone));
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  }
+  .np-art-num {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.92rem;
+  }
+  .np-text {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
     flex-direction: column;
   }
   .np-open {
@@ -1501,17 +1641,22 @@
     color: var(--pop);
     text-decoration: underline;
   }
-  .np-error {
-    display: block;
+  /* display:contents is a no-op on mobile -- .np-album lays out
+     exactly as if it were still a direct .np-text child (because, for
+     layout purposes, it is). Only becomes a real flex row at desktop
+     width, in the min-width: 980px block below. */
+  .np-sub {
+    display: contents;
+  }
+  /* Desktop only -- "· year" suffix, inline right after .np-album on
+     the same line. A separate element so .np-album's own text and
+     link (shared with mobile) never change. */
+  .np-year {
+    display: none;
     font-family: var(--font-mono);
     font-size: 0.68rem;
     letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--pop);
-    margin-top: 3px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    color: var(--ash);
   }
 
   .controls {
@@ -1592,12 +1737,6 @@
     width: 16px;
     height: 16px;
   }
-  @media (min-width: 980px) {
-    .expand-btn {
-      display: flex;
-    }
-  }
-
   .ic-play {
     width: 0;
     height: 0;
@@ -1646,14 +1785,22 @@
     transform: scaleX(-1);
   }
 
-  .progress-row {
+  /* Desktop only. .controls (above) sits on top, this seek row below
+     it, making the "one row of ~76px" bar a two-row center column at
+     desktop width -- see the min-width: 980px block further down for
+     exactly how tall that ends up and the rest of the grid. */
+  .transport {
+    flex: none;
     display: flex;
     align-items: center;
-    gap: 9px;
-    flex: 1 1 160px;
-    min-width: 0;
   }
-  .progress-row .time {
+  .bar-seek-row {
+    display: none;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+  }
+  .bar-seek-row .time {
     font-family: var(--font-mono);
     font-size: 0.68rem;
     color: var(--ash-dim);
@@ -1661,24 +1808,166 @@
     width: 2.6em;
     flex: none;
   }
-  .progress-row .time.now {
+  .bar-seek-row .time.now {
     text-align: right;
     color: var(--ash);
   }
-  /* Display only -- the bar shows playback position, it doesn't scrub
-     it, so this is a plain div (not a range input), matching the
-     mobile mini bar's own non-interactive progress line. */
-  .bar-progress {
-    flex: 1;
-    min-width: 0;
-    height: 6px;
-    background: rgba(239, 230, 204, 0.2);
-    pointer-events: none;
+  .bar-seek {
+    height: 14px;
   }
-  .bar-progress-fill {
-    height: 100%;
-    width: 0%;
-    background: var(--pop);
+  .bar-seek::-webkit-slider-runnable-track {
+    height: 4px;
+  }
+  .bar-seek::-moz-range-track {
+    height: 4px;
+  }
+  .bar-seek::-moz-range-progress {
+    height: 4px;
+  }
+  .bar-seek::-webkit-slider-thumb {
+    width: 8px;
+    height: 14px;
+    margin-top: -5px;
+  }
+  .bar-seek::-moz-range-thumb {
+    width: 8px;
+    height: 14px;
+  }
+
+  /* Desktop only -- volume. */
+  .right-controls {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .volume {
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+  .vol-btn {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--ash);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: color 0.15s;
+  }
+  .vol-btn:hover {
+    color: var(--bone);
+  }
+  /* Speaker + two sound-wave arcs, same stroke-based inline-SVG
+     pattern as .expand-btn/.icon-btn's own icons elsewhere in this
+     file. Muted (vol-slider.value "0" or the mute toggle) swaps the
+     outer arc's visibility via JS, wired in the next phase. */
+  #vol-icon {
+    width: 16px;
+    height: 16px;
+  }
+  .vol-slider {
+    width: 84px;
+    height: 14px;
+  }
+  .vol-slider::-webkit-slider-runnable-track {
+    height: 4px;
+  }
+  .vol-slider::-moz-range-track {
+    height: 4px;
+  }
+  .vol-slider::-moz-range-progress {
+    height: 4px;
+  }
+  .vol-slider::-webkit-slider-thumb {
+    width: 8px;
+    height: 14px;
+    margin-top: -5px;
+  }
+  .vol-slider::-moz-range-thumb {
+    width: 8px;
+    height: 14px;
+  }
+
+  /* ---- desktop bar (>=980px): Spotify-style three-column layout,
+     this label sheet's own tokens/fonts/square corners. The mobile
+     mini bar below 980px is entirely untouched by this block -- every
+     rule here only ever ADDS display:flex to something that defaults
+     to display:none on narrower screens, or resizes something that's
+     already desktop-only (.expand-btn). Placed here, after every base
+     rule it overrides, deliberately -- same specificity as those base
+     rules, so source order decides the tie; a draft that put this
+     block earlier in the file had the base display:none rules win
+     regardless of viewport width, hiding the seek row and volume
+     controls outright (caught by a Playwright computed-style check
+     reading "display: none" at 1280px). ---- */
+  @media (min-width: 980px) {
+    .expand-btn {
+      display: flex;
+    }
+    .player-inner {
+      gap: 24px;
+    }
+    .np {
+      flex: 1 1 30%;
+      max-width: 360px;
+      gap: 12px;
+    }
+    .np-art {
+      display: flex;
+    }
+    /* .np-sub becomes a real flex row here, so .np-album and .np-year
+       flow onto one "Album · Year" line -- .np-album's own text/link
+       is untouched, this only changes how it's laid out next to the
+       new .np-year sibling. */
+    .np-sub {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      min-width: 0;
+    }
+    .np-album {
+      min-width: 0;
+      flex: 0 1 auto;
+    }
+    .np-year {
+      display: inline;
+      flex: none;
+    }
+    .transport {
+      flex: 1 1 40%;
+      max-width: 480px;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .controls {
+      align-self: center;
+    }
+    .bar-seek-row {
+      display: flex;
+    }
+    .right-controls {
+      flex: 1 1 30%;
+      max-width: 360px;
+      justify-content: flex-end;
+    }
+    .volume {
+      display: flex;
+    }
+    /* Two stacked rows need more than 76px -- the mobile bar keeps its
+       own 76px (set in the max-width: 979px block further down).
+       --minih (page bottom padding) and the stage's own offsets are
+       already driven live off #player-bar's real offsetHeight (see
+       initMinih() in the script), so this one height change is all
+       that's needed for the rest of the page to adapt. */
+    .player-bar {
+      height: 88px;
+    }
   }
 
   .range {
@@ -1735,9 +2024,6 @@
   }
 
   @media (max-width: 979px) {
-    .progress-row {
-      display: none;
-    }
     #prev-btn,
     #next-btn {
       display: none;
