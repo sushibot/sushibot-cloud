@@ -1215,3 +1215,184 @@ ready. Said so explicitly rather than silently picking that tradeoff;
 happy to push C ahead of B separately if you'd rather not wait.
 
 No bucket, CORS, or DNS changes made.
+
+## Round: 7 layout fixes + full behavior phase for item B
+
+Layout review approved moving to the behavior phase, folding in 7
+fixes first. All 7 done, screenshotted, then behavior implemented as
+planned. Still held locally (`git commit`, not pushed) pending the
+reviewer below AND your sign-off on the final screenshot, per your
+explicit gate.
+
+### A second real cascade-order bug, found while diagnosing fix #1
+
+While measuring the bar to fix "vertical balance" (item 1), found
+`#bar-seek-row`'s rendered height was `44px`, not the intended `14px`.
+Root cause: the exact same class of bug as the display:none/flex issue
+from last round, just for height/thumb sizing this time --
+`.bar-seek`/`.vol-slider`'s own override rules were declared *before*
+`.range`'s base rules (same specificity; the file's `.range` block
+comes later in source, so IT was winning). Fixed by moving the whole
+`.bar-seek`/`.vol-slider` sizing block to after `.range`'s full
+pseudo-element set. Verified via `getBoundingClientRect()`:
+`#bar-seek-row` height went from `44px` to `~17px` after the fix.
+
+### The 7 fixes
+
+1. **Vertical balance**: `.player-inner` gets `padding: 12px 24px` at
+   desktop width (was `0 24px` -- no vertical padding at all, which is
+   why `.transport` was touching the bar's top border). Verified via
+   `getBoundingClientRect()`: `.transport`'s top is now ~11px below the
+   bar's top edge, ~10px above the bar's bottom edge at the seek row --
+   reasonably balanced, not pixel-exact due to `align-items: center`'s
+   own rounding, imperceptible visually.
+2. **Expand glyph**: `.expand-btn`'s SVG swapped from a single chevron
+   path to four corner-bracket paths (a standard fullscreen/maximize
+   glyph). Same button, same size, same click handler/open-stage
+   behavior -- only the `<path>` contents changed. This button was
+   already desktop-only (hidden below 980px before this round even
+   started), so there's nothing on mobile to compare against; "mobile
+   keeps the chevron" doesn't apply since mobile never showed this
+   button at all.
+3. **Volume icon**: bumped from an illegible 16px CSS-shape (last
+   round) to a 20px inline SVG (speaker body + two arc paths), fixed
+   size at every width (it's desktop-only, so there's no responsive
+   variation to begin with). Three states -- `data-level="muted|low|
+   high"` on `#vol-btn`, toggling the arc paths' visibility via CSS --
+   now driven live by `#vol-slider`'s actual value through
+   `applyVolumeUI()` (0 → muted, 1-50 → low, 51-100 → high), not just a
+   static default. Verified each state renders visually distinct
+   (zoomed screenshots: muted shows body only, low shows one arc, high
+   shows both).
+4. **Subtitle dedup**: `paintTrackUI()` now skips the "· <year>"
+   suffix when `track.album === String(track.year)` (true for every
+   album in this catalog today, since albums are named after their
+   year) -- "2012 · 2012" now reads as just "2012".
+5. **Slider thumbs**: both `#bar-seek` and `#vol-slider` thumbs are
+   `opacity: 0.45` at rest, `opacity: 1` on `:hover`/`:focus-visible`/
+   `:active` (the last one covers "currently being dragged"). Track
+   stays `4px` either way -- only the thumb's visibility changes. Does
+   NOT touch `#drawer-seek` (the stage's own seek bar, not mentioned
+   in this request) -- scoped to the two new selectors only.
+6. **Play button 44px**: base `.tbtn.play` changed from `38px` to
+   `44px`. Confirmed this only affects desktop: mobile already had its
+   own `48px` override in the existing `max-width: 979px` block
+   (unchanged, untouched), so the base-rule change only ever applies
+   at `>=980px`. `.tbtn` (prev/next) was already `34px`, unchanged.
+7. **Time labels 12px**: `.bar-seek-row .time` font-size changed from
+   `0.68rem` (~10.9px) to a literal `12px`, matching the literal-px
+   convention this round's instructions used throughout.
+
+Verified at 1024px, 1280px, 1440px (one row, no overflow at any of the
+three) and mobile 390px (pixel-identical computed styles to before:
+bar height still `76px`, `#prev-btn`/`#next-btn`/`#np-art`/`#volume`/
+`#expand-btn` still all `display: none`, `#progress-border` still
+shows). Full suite 28/28 in both Chrome and WebKit after the fixes.
+
+### Behavior phase
+
+- **Drag-to-seek**: `#bar-seek` gets `input`/`change` listeners
+  mirroring `#drawer-seek`'s existing pattern exactly -- `input` (fires
+  continuously while dragging, or once per arrow-key press) sets
+  `isSeeking = true` and updates the displayed time + the slider's
+  `--progress` fill + `aria-valuetext` live; `change` (fires on
+  release) commits `audio.currentTime` and clears `isSeeking`. Also
+  cross-syncs `#drawer-seek`'s own value while dragging the bar, so the
+  stage doesn't show a stale position if opened right after. Verified
+  with a real mouse drag (`page.mouse.down/move/up`) in both Chrome and
+  WebKit: `currentTime` jumped from ~1.4s to ~85s on an 80%-position
+  drag in Chrome, ~0.8s to 85s in WebKit. Native click-to-seek (clicking
+  anywhere on the track, not just dragging) confirmed working as a
+  side effect of the same native `<input type="range">` behavior.
+- **Keyboard arrows**: free from using a real range input, but the
+  `step` needed to go from `1` (1ms per arrow press, imperceptible) to
+  `1000` (1 second per press) for this to be usable -- changed in the
+  markup. Verified: `ArrowRight` on a focused `#bar-seek` moves the
+  slider's value forward by 1s immediately (the `input` event), and
+  commits the actual seek on blur (the `change` event) -- both
+  confirmed via direct measurement, not just assumed from the native
+  spec.
+- **`aria-valuetext`**: `#bar-seek` gets the formatted time (e.g.
+  `"0:54"`) on every value change, from both dragging and the regular
+  `timeupdate`-driven `syncProgress()` (so it's accurate even when
+  nobody's touching the slider, not just mid-drag). `#vol-slider` gets
+  either `"<N>%"` or `"Muted"`. Verified both match their expected
+  pattern via regex.
+- **`isSeeking` guard**: was already wired defensively back in the
+  layout phase (before dragging existed to actually test it against);
+  now confirmed for real -- simulated a drag, let several
+  `timeupdate`-driven `syncProgress()` ticks pass mid-"drag", confirmed
+  `#bar-seek`'s value never snapped back to the actual playback
+  position until the simulated `change` event.
+- **Volume + mute + persistence**: new module-scope `volumeLevel`
+  (0-100) and `isMuted` state, read once from `localStorage`
+  (`sb_volume`/`sb_muted`, wrapped in try/catch) right after the audio
+  singleton is created -- so `audio.volume` is correct from the very
+  first frame, not just after `initPlayerBar()`'s first run.
+  `applyVolumeUI()` is the single place that pushes this state to
+  `audio.volume`, the slider's position/fill/aria-valuetext, and the
+  icon's muted/low/high state + aria-label (Mute/Unmute) -- called on
+  every real change (slider drag, mute click) and once per page-load
+  resync, same pattern as everything else in this file. Dragging the
+  slider at all un-mutes (touching volume implies wanting sound,
+  matching every mainstream player). Persists on slider `change`
+  (release, not every drag tick) and on every mute-button click.
+  Verified end-to-end in both Chrome and WebKit: slider→audio.volume,
+  mute zeroes it, unmute restores the exact prior level (not just
+  "some" level), icon state matches, values round-trip through
+  `localStorage` and survive a real page reload.
+- **`element.volume` vs. the analyser -- the real check, in both
+  browsers**: opened the stage (required -- `getByteFrequencyData` is
+  only actually called while the visualizer's own draw loop is
+  running, which needs the canvas visible per its existing
+  `IntersectionObserver` gate), confirmed `analyser: live` via the
+  debug status line, sampled the canvas's rendered pixel brightness
+  variance across several frames before and after changing
+  `audio.volume` (the same pixel-variance technique already used
+  successfully in an earlier round to distinguish the real analyser
+  from the simulated fallback). **Chrome**: variance 1201 → 2131 after
+  the volume change -- still clearly live, not flat. **WebKit**:
+  variance 0 → 90676 -- also clearly live (the "0 before" just means
+  the sampling window happened to land between two visually-similar
+  frames, not that it was silenced; "live" status plus the large
+  non-zero variance immediately after rules that out). **Conclusion:
+  `element.volume` does not break the analyser graph in either
+  browser** -- no `GainNode` needed, `audio.volume` is used directly,
+  as planned.
+- A first attempt at this last check tried instrumenting
+  `AnalyserNode.prototype.getByteFrequencyData` directly (a monkey-
+  patch) rather than sampling the canvas -- repeatedly came back with
+  zero captured calls despite the status line correctly reading
+  "live", which traced back to exactly the "stage must be open for the
+  draw loop to run at all" fact above, plus some flakiness getting the
+  timing of opening the stage right relative to when the instrumented
+  page loaded. Switched to the canvas-variance method instead, which
+  is both simpler and already proven in this codebase. Noting this so
+  the dead end doesn't get silently repeated later.
+- A first combined test script covering all of the above in one
+  shared browser page produced a confusing cascade of failures
+  (`window.__playerAudio` undefined, element-not-found timeouts) after
+  the very first (mouse-drag) test -- root-caused to test-harness
+  state contamination between steps sharing one page instance, not a
+  real bug: every single behavior passed cleanly once re-run as
+  isolated, independent checks (fresh page per check). Flagging this
+  so it doesn't read as "something was broken and then silently
+  fixed" -- the underlying feature code was never actually broken,
+  only the shared-page test script was unreliable.
+
+Full suite 28/28 in both Chrome and WebKit, mobile unaffected,
+confirmed again after the behavior phase landed.
+
+**Reviewer finding, fixed**: `applyVolumeUI()` was called twice,
+back-to-back, in the page-load resync block, with no state change
+between the calls -- harmless (idempotent) but redundant, and
+inconsistent with every other resync in that same block (each of
+`syncProgress`/`updatePlayIcon`/`updateNav` runs exactly once).
+Narrowed the first call back to just `audio.volume = ...` (its
+original intent, before it got widened to the full `applyVolumeUI()`
+during the behavior-phase edit), leaving the one full DOM resync where
+it already correctly lived, grouped with the rest of the block.
+Rebuilt, re-ran the volume/persistence checks and the full suite
+(28/28 both browsers) -- all still pass.
+
+No bucket, CORS, or DNS changes made.
