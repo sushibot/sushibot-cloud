@@ -331,7 +331,9 @@ const copyrightSpan =
     width: auto;
     max-width: none;
     z-index: 1;
-    filter: drop-shadow(0 0 8px var(--glow-soft));
+    /* Deliberate deviation from the POC: glow removed per direct
+       instruction (see the later .char override for the opacity change
+       too). */
   }
   .side {
     display: none;
@@ -449,7 +451,9 @@ const copyrightSpan =
   .enter-in {
     max-width: var(--maxw);
     margin-inline: auto;
-    padding: 26px 12px;
+    /* Deliberate deviation from the POC: tightened from 26px top/bottom
+       per direct instruction. No breakpoint below overrides this. */
+    padding: 18px 12px;
     display: grid;
     gap: 18px;
     align-items: center;
@@ -619,25 +623,11 @@ const copyrightSpan =
     letter-spacing: 0.02em;
     text-transform: uppercase;
   }
-  .about h2::before {
-    content: "";
-    position: absolute;
-    z-index: -1;
-    left: -6%;
-    top: 50%;
-    width: min(112%, 720px);
-    height: 300%;
-    transform: translateY(-50%);
-    pointer-events: none;
-    opacity: 0.75;
-    background: radial-gradient(
-      closest-side,
-      var(--glow-soft),
-      rgba(34, 211, 238, 0.12) 55%,
-      transparent 80%
-    );
-    filter: blur(10px);
-  }
+  /* Deliberate deviation from the POC: the title's glow pseudo-element
+     (radial-gradient + blur) is removed entirely per direct
+     instruction. .copy's own text-shadow below is a separate,
+     functional legibility backdrop against the viz canvas, not a
+     glow -- left untouched. */
   .copy {
     max-width: 62ch;
     text-shadow:
@@ -723,7 +713,10 @@ const copyrightSpan =
     right: calc(-1 * var(--gutR) - 4%);
     height: 150%;
     bottom: -34%;
-    opacity: 0.6;
+    /* Deliberate deviation from the POC: the glow read as too hot
+       behind the type, and the wash was too present at .6 -- flattened
+       to no glow and a quieter .2 opacity per direct instruction. */
+    opacity: 0.2;
     -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 38%);
     mask-image: linear-gradient(90deg, transparent 0, #000 38%);
   }

@@ -1036,3 +1036,182 @@ reachable, and the full suite stays 28/28.
 No bucket, CORS, or DNS changes made. No fix for FAIL A's analyser
 path, and no Media Session re-registration fix -- both still waiting
 on your logs.
+
+## Round: home page, desktop player bar rebuild, error banner (0/A/B/C)
+
+### 0: staging check
+
+`origin/staging` HEAD was exactly `fa25292`, identical to local `HEAD`
+-- confirmed before starting, nothing newer existed anywhere.
+
+### A: home page (`src/pages/index.astro`) -- three deliberate POC deviations
+
+1. **Background image glow + opacity**: `.char` (the character-outline
+   `<img>`) had `filter: drop-shadow(0 0 8px var(--glow-soft))` on one
+   rule and `opacity: 0.6` on a later override (same specificity,
+   wins). Removed the filter entirely; opacity now `0.2`.
+2. **"Enter the Archive" padding**: confirmed as `.enter-in` (the
+   section's content wrapper), not the `.cta` button -- the button's
+   own padding is `0 24px` with a fixed `min-height: 64px`, which
+   doesn't match "left/right 12px" at all. Changed `26px 12px` →
+   `18px 12px`. Checked both breakpoints below it (`max-width: 819px`
+   only toggles `.bc`/`.sub` visibility, `min-width: 820px` only
+   changes `grid-template-columns`/`gap`) -- neither touches padding,
+   so `18px 12px` applies at every width, as asked.
+3. **About title glow**: removed `.about h2::before` (the radial-
+   gradient + blur pseudo-element) entirely. `.copy`'s own
+   `text-shadow` is a separate, functional legibility backdrop against
+   the viz canvas, not a glow -- left untouched.
+
+No Tailwind exists in this project (checked `package.json`, no config
+file) and there are no spacing tokens either -- used plain px
+literals, matching the rest of this file's existing convention, per
+your go-ahead.
+
+### B: desktop player bar rebuild -- layout phase only
+
+**Correction worth recording**: my own pre-implementation read of the
+existing CSS was wrong in an important way, caught while re-verifying
+before writing new markup. `.progress-row` (time/progress/time) and
+`#prev-btn`/`#next-btn` were NOT mobile elements being preserved --
+they were already desktop-only (hidden below 980px via the existing
+`max-width: 979px` block; only `#play-btn` ever showed on mobile). The
+*actual* mobile-only progress indicator is the separate
+`.progress-border`/`.progress-fill` hairline at the bar's top edge.
+Given that, `.progress-row`/`#bar-progress`/`#bar-progress-fill` were
+deleted outright rather than kept hidden-forever dead code, replaced
+by the new interactive `#bar-seek` at the exact same breakpoint.
+
+**Layout built**:
+- Left: `.np-art` (new), a 44px chamfered tile using the same
+  clip-path pattern already in `global.css`, colored via
+  `--stage-era`/`-fg` (the same custom properties `paintTrackUI()`
+  already sets per track for the full-screen stage -- reused, not
+  duplicated) with the track number. No cover-art field exists
+  anywhere in the content model (checked `QueueTrack`'s type and every
+  track/album JSON) -- confirmed every track renders this placeholder;
+  nothing invents art. Title unchanged. Subtitle: `.np-album`'s own
+  text/link is completely untouched (still shared with mobile); a new
+  sibling `.np-year` (just "· <year>") sits next to it via a
+  `.np-sub` wrapper that's `display: contents` on mobile (fully
+  transparent to layout -- `.np-album` behaves exactly as before) and
+  a real flex row only at desktop width.
+- Center: `.transport` wraps the existing `.controls` (unchanged
+  prev/play/next, `#prev-btn`/`#next-btn` still hidden <980px exactly
+  as before) above the new `.bar-seek-row` (a real
+  `<input type="range" id="bar-seek">`, reusing the `.range` styling
+  already built for the stage's own seek bar -- gets `role="slider"`
+  and native keyboard arrows for free). `syncProgress()` now drives
+  `#bar-seek`'s value instead of the deleted div, guarded by
+  `!isSeeking` (the same flag `#drawer-seek`'s own dragging already
+  uses) per your instruction to ignore timeupdate writes while
+  dragging -- wired now even though dragging itself isn't yet, so
+  it's in place before that lands.
+- Right: `.volume` (new, icon button + `<input type="range">`, same
+  `.range` styling) then `.expand-btn` (unchanged, still opens the
+  existing stage the same way). No shuffle, repeat, "+", or any of the
+  icons past volume, per your list.
+- `.player-bar` height: `88px` at desktop only (mobile keeps its
+  existing `76px`, untouched). `--minih` (page bottom padding) and the
+  stage's own `top: var(--navh)` offset are both already driven live
+  off real measurements (a `ResizeObserver` on the bar itself, and the
+  nav's own measured height) -- confirmed via DevTools inspection that
+  neither needed a manual update, the existing mechanism just adapted.
+
+**A real bug caught and fixed before the screenshot**: my first draft
+placed the new `@media (min-width: 980px)` override block *before*
+the base rules it was meant to override (`.transport`,
+`.bar-seek-row`, `.right-controls`, `.volume`, etc.). Same specificity,
+same media condition scope otherwise -- CSS resolves the tie by source
+order, so the later base `display: none` rules were silently winning
+regardless of viewport width. Caught by a Playwright computed-style
+check reading `display: none` on `#bar-seek-row`/`#volume` at 1280px
+when the screenshot showed them missing entirely. Fixed by moving the
+whole desktop block to after every rule it overrides. Also swapped the
+volume icon from a CSS-only shape (illegible at this size, confirmed
+by zooming into the rendered screenshot) to an inline SVG matching the
+stroke-based icon pattern this file already uses for
+`.expand-btn`/`.icon-btn`.
+
+**Verified**:
+- 1024px, 1280px, 1440px: one row (~88px), no overflow at any of the
+  three.
+- Mobile (390px): bar height still exactly `76px`; `#prev-btn`,
+  `#next-btn`, `#np-art`, `#volume`, `#expand-btn` all still compute
+  to `display: none`; `#progress-border` still shows. Pixel-identical
+  to before this round.
+- Full suite: 28/28 in both Chrome and WebKit. One test
+  (`desktop: the bar's progress display is not interactive`) asserted
+  exactly the premise this item replaces -- updated it to confirm the
+  new `#bar-seek` is a real, enabled range input whose value tracks
+  live playback, without yet asserting drag-to-seek (not wired this
+  phase).
+
+**Not done yet, waiting for your sign-off on the screenshot before
+starting**: drag-to-seek (click/drag, keyboard arrows, `aria-valuetext`),
+volume mute toggle + slider logic + `localStorage` persistence,
+`element.volume` vs. the analyser graph verification in both Chrome
+and desktop Safari/WebKit (per your instruction -- not yet run, since
+there's no volume wiring yet to test).
+
+### C: error banner removed, MediaError logging added
+
+- Removed `.np-error`'s markup, its CSS, and the `npErrorEl`
+  variable/query entirely -- no visible banner on desktop or mobile.
+- `setErrorUI()` now sets/clears a `data-error` attribute on
+  `#player-bar` instead of toggling the (never-styled) `has-error`
+  class, which is now gone too.
+- The `error` listener reads `audio.error.code`/`.message`, maps the
+  code to its name (`MEDIA_ERR_ABORTED`/`NETWORK`/`DECODE`/
+  `SRC_NOT_SUPPORTED`), and always logs via `debugLog()`. For any code
+  other than 1, it also calls `console.error()` and `setErrorUI(true,
+  "error-event")` (sets `data-error`). For code 1 (`MEDIA_ERR_ABORTED`)
+  specifically: no `console.error`, no `data-error`, no "failure" log
+  line -- just a quiet `debugLog` noting it was ignored, per your
+  instruction not to treat it as a real error.
+- Verified with a forced network error (`route.abort`): no visible
+  banner, `data-error` attribute present, `console.error` fires with
+  the real code name and message, debug panel shows the full sequence,
+  and the banner-equivalent state correctly clears on skipping to a
+  healthy track.
+- Checked whether a fast track-switch actually produces
+  `MEDIA_ERR_ABORTED` via the `error` event, in both Chrome and
+  WebKit, to confirm the code-1 branch for real rather than only by
+  reading: in both engines, a fast switch only fires a plain `abort`
+  event (no accompanying `error`/`MediaError` at all) -- so the
+  code-1 path is correctly written and will fire whenever a real
+  `MediaError(code=1)` does occur, but I could not force a live
+  repro of that exact case in this environment. Noting this rather
+  than overclaiming "verified."
+- **NouthMoises (2026, track 1) root-cause investigation**: pulled the
+  real file from the bucket. `content-type: audio/mpeg` correct;
+  `content-length: 1,621,306` bytes, downloaded file matches byte-for-
+  byte, not truncated; `ffprobe` confirms a valid MP3 (44.1kHz stereo,
+  192kbps, 67.5s duration, matching the listed 1:07/1:08) and
+  `ffmpeg -v warning` decode produced zero warnings; Range request
+  returns 206 correctly. Played it directly against the live staging
+  site in both real Chrome and WebKit via Playwright -- no error
+  event, plays cleanly, correct duration, `currentTime` advances
+  normally, in both engines. Could not reproduce the reported error at
+  all. File and bucket-side serving are healthy by every check
+  available; best guess is a one-off transient network blip or
+  something specific to your exact device, not a reproducible file or
+  code issue. Not fixing anything here per your instruction, since
+  nothing reproducible or trivial was found.
+
+### Commits
+
+Two, not three: `index.astro` (item A) is a clean, independent commit.
+Items B and C both land in `src/components/PlayerBar.astro`, and after
+33 interleaved hunks accumulated across sequential edits to the same
+file, a scripted hunk-level split risked silently corrupting the diff
+-- flagged this rather than attempting it. Both B and C are still
+independently reviewed (see below) and clearly separated in this
+PROGRESS.md entry and in the commit message. C is fully complete; B's
+commit is held locally, not pushed to staging, until you've seen the
+screenshot and signed off and the behavior phase is done -- so the
+complete, independent work in C won't reach staging until B is also
+ready. Said so explicitly rather than silently picking that tradeoff;
+happy to push C ahead of B separately if you'd rather not wait.
+
+No bucket, CORS, or DNS changes made.
