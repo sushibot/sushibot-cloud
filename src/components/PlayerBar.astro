@@ -2051,7 +2051,7 @@
       display: flex;
     }
     /* Two stacked rows need more than 76px -- the mobile bar keeps its
-       own 76px (set in the max-width: 979px block further down).
+       own 68px (set in the max-width: 979px block further down).
        --minih (page bottom padding) and the stage's own offsets are
        already driven live off #player-bar's real offsetHeight (see
        initMinih() in the script), so this one height change is all
@@ -2185,6 +2185,9 @@
     /* the play button runs the bar's full height, flush to the right
        edge, so it reads as part of the bar; the track info centers on
        that same full height so it lines up with the button */
+    .player-bar {
+      height: 68px;
+    }
     .player-inner {
       padding: 0 0 0 16px;
       align-items: stretch;
@@ -2199,11 +2202,20 @@
       align-items: stretch;
     }
     .tbtn.play {
-      width: 76px;
+      width: 68px;
       height: auto;
     }
     .tbtn.play:active:not(:disabled) {
       transform: none;
+    }
+    /* icons scaled up to suit the bigger button; play and pause stay
+       the same 14x16 box so toggling doesn't shift anything */
+    .tbtn.play .ic-play {
+      border-width: 8px 0 8px 14px;
+    }
+    .tbtn.play .ic-pause {
+      width: 14px;
+      height: 16px;
     }
     /* the album link stays as wide as its text, not the whole column */
     .np-album {
