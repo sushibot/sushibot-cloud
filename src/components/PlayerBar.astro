@@ -978,6 +978,8 @@
   // length. Re-run whenever the title or the bar's width changes.
   function fitTitleMarquee() {
     if (!npTitle) return
+    titleReturn?.cancel()
+    titleReturn = null
     npTitle.classList.remove("marquee")
     const shift = npTitle.scrollWidth - npTitle.clientWidth
     if (shift <= 1) return
@@ -986,6 +988,38 @@
     npTitle.style.setProperty("--marquee-dur", `${Math.max(5, shift / 40 / 0.6)}s`)
     void npTitle.offsetWidth // restart from the first hold on a new title
     npTitle.classList.add("marquee")
+    if (titleHovered) holdTitleMarquee()
+  }
+
+  // Mouse hover over the title stops the marquee and eases the text back
+  // to its start, so it can be read from the beginning; leaving restarts
+  // the marquee from its first pause. Mouse only -- a tap on phones
+  // opens the stage, and touch "hover" would otherwise stick.
+  let titleHovered = false
+  let titleReturn: Animation | null = null
+  function titleSlide() {
+    return npTitleText
+      ?.getAnimations()
+      .find((a): a is CSSAnimation => a instanceof CSSAnimation)
+  }
+  function holdTitleMarquee() {
+    const slide = titleSlide()
+    if (!slide || !npTitleText) return
+    slide.pause()
+    const x = new DOMMatrix(getComputedStyle(npTitleText).transform).m41
+    titleReturn?.cancel()
+    titleReturn = npTitleText.animate(
+      [{ transform: `translateX(${x}px)` }, { transform: "translateX(0)" }],
+      { duration: 250, easing: "ease-out", fill: "forwards" },
+    )
+  }
+  function releaseTitleMarquee() {
+    titleReturn?.cancel()
+    titleReturn = null
+    const slide = titleSlide()
+    if (!slide) return
+    slide.currentTime = 0
+    slide.play()
   }
 
   // Paints every piece of UI (bar + stage) for a given track. Called
@@ -1506,6 +1540,16 @@
     // resizes) and once the display font loads, so re-measure then.
     new ResizeObserver(() => fitTitleMarquee()).observe(bar!)
     document.fonts?.ready.then(() => fitTitleMarquee())
+    npTitle!.addEventListener("pointerenter", (e) => {
+      if (e.pointerType !== "mouse") return
+      titleHovered = true
+      holdTitleMarquee()
+    })
+    npTitle!.addEventListener("pointerleave", (e) => {
+      if (e.pointerType !== "mouse") return
+      titleHovered = false
+      releaseTitleMarquee()
+    })
 
     // ---------- stage spectrum -- real analyser with a 118 BPM
     // simulated fallback, matching the home page's About spectrum pattern ----------
