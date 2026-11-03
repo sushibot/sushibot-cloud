@@ -31,7 +31,7 @@
      POC declares them in the same :root block */
   --maxw: 1200px;
   --gut: max(12px, calc((100vw - var(--maxw)) / 2));
-  --navh: 114px;
+  --navh: 65px;
   --logoh: 64px;
   --minih: 84px;
 }

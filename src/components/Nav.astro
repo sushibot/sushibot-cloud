@@ -236,27 +236,47 @@ const idxLabel = formatArchiveIndex(yearRange)
     height: 20px;
     color: var(--ash);
   }
+  /* phones: logo and links share one row (the barcode tag stays hidden);
+     the logo drops its wordmark and the stripe grows into a square icon
+     matching favicon.svg -- the link's aria-label still names the site */
   @media (max-width: 899px) {
     .top-in {
-      grid-template-columns: 1fr;
-      padding-inline: 12px;
-      gap: 2px;
+      grid-template-columns: auto 1fr;
     }
-    .nav {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 2px;
+    .logo {
+      padding: 0 18px;
     }
-    .nav a {
-      min-height: 48px;
-      background: var(--scarlet);
-      color: var(--bone);
-    }
-    .nav a::after {
+    .logo b {
       display: none;
     }
-    .nav a[aria-current] {
-      background: var(--scarlet-deep);
+    .stripe {
+      width: 28px;
+      height: 28px;
+      opacity: 1;
+      background: repeating-linear-gradient(
+        -45deg,
+        var(--hazard) 0 6px,
+        transparent 6px 12px
+      );
+    }
+    .logo:is(:hover, :focus-visible, :active) .stripe {
+      background: repeating-linear-gradient(
+        -45deg,
+        var(--paper-ink) 0 6px,
+        transparent 6px 12px
+      );
+    }
+    .nav {
+      justify-content: flex-end;
+    }
+    .nav a {
+      padding: 0 12px;
+      font-size: 12px;
+      letter-spacing: 0.14em;
+    }
+    .nav a::after {
+      left: 12px;
+      right: 12px;
     }
   }
 </style>
