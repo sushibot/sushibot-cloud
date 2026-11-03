@@ -324,6 +324,13 @@ body.playing .row.is-current .disc::after {
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+/* phones: smaller row titles so the track and album rows feel less
+   crowded */
+@media (max-width: 899px) {
+  .name {
+    font-size: 16px;
+  }
+}
 .meta {
   font: 400 12px/1.2 var(--font-mono);
   letter-spacing: 0.06em;
