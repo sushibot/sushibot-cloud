@@ -311,7 +311,7 @@ const trackRows = tracks.map((track, i) => ({
   .track-page {
     display: flex;
     flex-direction: column;
-    height: calc(100svh - var(--navh));
+    height: calc(100svh - var(--navh) - var(--bar-space));
     min-height: 0;
     background: var(--void);
   }

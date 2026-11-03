@@ -34,6 +34,7 @@
   --navh: 65px;
   --logoh: 64px;
   --minih: 84px;
+  --bar-space: 0px;
 }
 
 *,
@@ -78,6 +79,9 @@ body {
    every page navigation. */
 body.player-active {
   padding-bottom: var(--minih);
+  /* one-screen pages subtract this so they fit above the bar instead
+     of overflowing by its height */
+  --bar-space: var(--minih);
 }
 
 a {
