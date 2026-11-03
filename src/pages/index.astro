@@ -767,6 +767,14 @@ const copyrightSpan =
       n = Math.max(12, Math.round(W / pitch))
       base = H
       maxH = Math.max(120, (H - 48) * 0.55)
+      // Phones stack the copy above the stats, so full-height bars ran
+      // up through the paragraphs -- cap them so the highest peak cap
+      // stays below the last line of text.
+      const copy = sec!.querySelector(".copy")
+      if (copy && W < 900) {
+        const copyBottom = copy.getBoundingClientRect().bottom - b.top
+        maxH = Math.min(maxH, Math.max(40, base - copyBottom - 16))
+      }
       lvl = []
       peak = []
       hold = []

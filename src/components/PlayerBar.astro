@@ -1060,7 +1060,11 @@
     if (drawerSub) {
       const parts: string[] = []
       if (track.album) parts.push(track.album)
-      if (track.year != null) parts.push(String(track.year))
+      // skip the year when the album is already named after it (every
+      // album today), same as the desktop bar's "· year" suffix
+      if (track.year != null && track.album !== String(track.year)) {
+        parts.push(String(track.year))
+      }
       if (track.trackNum != null && track.trackTotal != null) {
         parts.push(`track ${track.trackNum} of ${track.trackTotal}`)
       }
@@ -2313,10 +2317,27 @@
       width: 14px;
       height: 16px;
     }
-    /* the album link stays as wide as its text, not the whole column */
+    /* the whole track-info area opens the stage, not just the 21px
+       title line: the title button's ::after stretches over .np */
+    .np {
+      position: relative;
+    }
+    .np-open::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+    }
+    /* the album link stays as wide as its text, not the whole column,
+       and sits above that overlay; the padding (cancelled by the
+       negative margins) grows its tap area to 31px tall without
+       moving the text */
     .np-album {
+      position: relative;
+      z-index: 1;
       align-self: flex-start;
       max-width: 100%;
+      padding-block: 8px;
+      margin: -5px 0 -8px;
     }
   }
 
@@ -2571,6 +2592,38 @@
   @media (max-width: 379px) {
     .stage-transport .tb .tl {
       display: none;
+    }
+  }
+  /* short phones (iPhone SE and smaller): a long title and the 200px
+     visualizer pushed the seek row and transport below the fold, so
+     tighten everything until the controls fit without scrolling */
+  @media (max-width: 979px) and (max-height: 760px) {
+    .stage-in {
+      gap: 14px;
+    }
+    .title {
+      font-size: clamp(26px, 8vw, 40px);
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
+      overflow: hidden;
+    }
+    .sub {
+      margin-top: 6px;
+      font-size: 14px;
+    }
+    .viz-wrap {
+      min-height: 96px;
+    }
+  }
+  @media (max-width: 979px) and (max-height: 600px) {
+    .title {
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+    }
+    .viz-wrap {
+      min-height: 56px;
     }
   }
 

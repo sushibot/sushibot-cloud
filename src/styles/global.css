@@ -329,6 +329,28 @@ body.playing .row.is-current .disc::after {
 @media (max-width: 899px) {
   .name {
     font-size: 16px;
+    /* wrap at spaces; only split a word if it alone is wider than the
+       line (anywhere split "Uncharted" mid-word in a narrow focus row) */
+    overflow-wrap: break-word;
+  }
+}
+/* very narrow phones: the focused row's disc, play box and gaps left
+   the title about 58px, so slim them to give it room */
+@media (max-width: 359px) {
+  .rowbtn {
+    gap: 10px;
+  }
+  .rowbtn .disc {
+    --disc: 48px;
+    width: 48px;
+    height: 48px;
+  }
+  .rowbtn .disc .num {
+    font-size: 20px;
+  }
+  .row.is-focus .cta {
+    min-width: 44px;
+    padding: 0;
   }
 }
 .meta {
