@@ -40,7 +40,10 @@
       </div>
       <div class="np-text">
         <button class="np-open" id="np-open" type="button" aria-label="Open player">
-          <span class="np-title" id="np-title"></span>
+          <!-- the inner span is what the long-title marquee slides -->
+          <span class="np-title" id="np-title"
+            ><span class="np-title-text" id="np-title-text"></span
+          ></span>
         </button>
         <!-- .np-sub is display:contents on mobile (a no-op wrapper --
              .np-album stacks exactly as it did as a direct .np-text
@@ -635,6 +638,7 @@
   let curTimeEl: HTMLSpanElement | null = null
   let totTimeEl: HTMLSpanElement | null = null
   let npTitle: HTMLDivElement | null = null
+  let npTitleText: HTMLSpanElement | null = null
   let npAlbum: HTMLAnchorElement | null = null
   // Desktop only -- the album/year subtitle and the era-colored
   // placeholder tile's track-number text.
@@ -967,6 +971,23 @@
     })
   }
 
+  // A title too long for the bar gets a looping marquee (.marquee in the
+  // CSS): after a pause the inner text span slides left to show the
+  // end, holds, and slides back. Only the overflow distance and duration are set here,
+  // so short titles never move and the speed is about the same for any
+  // length. Re-run whenever the title or the bar's width changes.
+  function fitTitleMarquee() {
+    if (!npTitle) return
+    npTitle.classList.remove("marquee")
+    const shift = npTitle.scrollWidth - npTitle.clientWidth
+    if (shift <= 1) return
+    npTitle.style.setProperty("--marquee-shift", `${shift}px`)
+    // ~40px/s across the 60% of the cycle spent sliding
+    npTitle.style.setProperty("--marquee-dur", `${Math.max(5, shift / 40 / 0.6)}s`)
+    void npTitle.offsetWidth // restart from the first hold on a new title
+    npTitle.classList.add("marquee")
+  }
+
   // Paints every piece of UI (bar + stage) for a given track. Called
   // both when a NEW track starts (from loadTrack()) and when resyncing
   // an already-playing track's info into a freshly-swapped page (see
@@ -974,10 +995,11 @@
   // navigation, but the DOM it's reflected into is brand new every
   // time and has to be told what's currently loaded.
   function paintTrackUI(track: QueueTrack) {
-    if (!bar || !npTitle || !npAlbum) return
+    if (!bar || !npTitle || !npTitleText || !npAlbum) return
     bar.classList.add("has-track")
     syncBodyPadding(bar)
-    npTitle.textContent = track.title
+    npTitleText.textContent = track.title
+    fitTitleMarquee()
     npAlbum.textContent = track.album ?? ""
     if (track.albumId) {
       npAlbum.href = `/albums/${track.albumId}/`
@@ -1248,6 +1270,7 @@
     curTimeEl = document.getElementById("bar-cur-time") as HTMLSpanElement | null
     totTimeEl = document.getElementById("bar-tot-time") as HTMLSpanElement | null
     npTitle = document.getElementById("np-title") as HTMLDivElement | null
+    npTitleText = document.getElementById("np-title-text") as HTMLSpanElement | null
     npAlbum = document.getElementById("np-album") as HTMLAnchorElement | null
     npYear = document.getElementById("np-year") as HTMLSpanElement | null
     npArtNum = document.getElementById("np-art-num") as HTMLSpanElement | null
@@ -1478,6 +1501,11 @@
       set()
     }
     initMinih()
+
+    // The title's room changes with the bar's width (rotation, desktop
+    // resizes) and once the display font loads, so re-measure then.
+    new ResizeObserver(() => fitTitleMarquee()).observe(bar!)
+    document.fonts?.ready.then(() => fitTitleMarquee())
 
     // ---------- stage spectrum -- real analyser with a 118 BPM
     // simulated fallback, matching the home page's About spectrum pattern ----------
@@ -1739,6 +1767,30 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  /* long titles only -- fitTitleMarquee() adds .marquee and sets the
+     overflow distance and cycle length. Holds 20% of the cycle at each
+     end (plus a 1s head start) so it's readable before it moves. It
+     slides the inner span with transform: animating text-indent on the
+     title itself updated layout but never repainted inside this fixed,
+     transformed bar, so the text looked frozen. */
+  .np-title.marquee {
+    text-overflow: clip;
+  }
+  .np-title.marquee .np-title-text {
+    display: inline-block;
+    animation: np-title-marquee var(--marquee-dur) ease-in-out 1s infinite
+      alternate;
+  }
+  @keyframes np-title-marquee {
+    0%,
+    20% {
+      transform: translateX(0);
+    }
+    80%,
+    100% {
+      transform: translateX(calc(-1 * var(--marquee-shift)));
+    }
   }
   .np-album {
     display: block;
@@ -2497,6 +2549,13 @@
   @media (prefers-reduced-motion: reduce) {
     .player-bar {
       transition: none;
+    }
+    .np-title.marquee {
+      text-overflow: ellipsis;
+    }
+    .np-title.marquee .np-title-text {
+      display: inline;
+      animation: none;
     }
   }
 </style>
