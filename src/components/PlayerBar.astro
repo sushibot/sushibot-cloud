@@ -2182,15 +2182,37 @@
     .progress-border {
       display: block;
     }
+    /* the play button runs the bar's full height, flush to the right
+       edge, so it reads as part of the bar. The 16px bottom inset
+       (room above the home indicator) moves from the bar onto the
+       track info so only the text sits above it. */
     .player-inner {
-      padding: 0 16px;
+      padding: 0 0 0 16px;
+      align-items: stretch;
+    }
+    .np {
+      padding-bottom: 16px;
+    }
+    /* volume and expand are hidden here, so this would be an empty
+       slot still taking a gap */
+    .right-controls {
+      display: none;
+    }
+    .transport,
+    .controls {
+      align-items: stretch;
     }
     .tbtn.play {
-      width: 48px;
-      height: 48px;
+      width: 76px;
+      height: auto;
     }
-    .player-bar {
-      padding-bottom: 16px;
+    .tbtn.play:active:not(:disabled) {
+      transform: none;
+    }
+    /* the album link stays as wide as its text, not the whole column */
+    .np-album {
+      align-self: flex-start;
+      max-width: 100%;
     }
   }
 
