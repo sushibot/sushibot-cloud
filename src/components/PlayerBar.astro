@@ -12,7 +12,7 @@ const freqTicks = [
   [1000, "1k"],
   [2000, "2k"],
   [4000, "4k"],
-  [8000, "8k Hz"],
+  [8000, "8k"],
 ].map(([hz, label], i, all) => ({
   label,
   left: ((Math.log((hz as number) / VIZ_F0) / Math.log(VIZ_F1 / VIZ_F0)) * 100).toFixed(2),
@@ -249,9 +249,12 @@ const freqTicks = [
     <div class="freq-axis" aria-hidden="true">
       {
         freqTicks.map(({ label, left, edge }) => (
-          <span class="tick" data-edge={edge} style={`left:${left}%`}>
-            {label}
-          </span>
+          <>
+            <i class="mark" style={`left:${left}%`} />
+            <span class="tick" data-edge={edge} style={edge ? undefined : `left:${left}%`}>
+              {label}
+            </span>
+          </>
         ))
       }
     </div>
@@ -2599,33 +2602,30 @@ const freqTicks = [
     font: 400 11px/1 var(--font-mono);
     color: var(--ash-dim);
   }
-  .freq-axis .tick {
+  /* marks sit at their true spots; labels center under them, except the
+     first, which starts flush with the spectrum's left edge, and the
+     last, which ends flush with its right edge */
+  .freq-axis .mark {
     position: absolute;
-    top: 0;
-    padding-top: 9px;
-    transform: translateX(-50%);
-    white-space: nowrap;
-  }
-  .freq-axis .tick::before {
-    content: "";
-    position: absolute;
-    left: 50%;
     top: 0;
     width: 1px;
     height: 5px;
     background: var(--ash-dim);
   }
-  .freq-axis .tick[data-edge="start"] {
-    transform: translateX(-20%);
+  .freq-axis .tick {
+    position: absolute;
+    top: 9px;
+    transform: translateX(-50%);
+    white-space: nowrap;
   }
-  .freq-axis .tick[data-edge="start"]::before {
-    left: 20%;
+  .freq-axis .tick[data-edge="start"] {
+    left: 0;
+    transform: none;
   }
   .freq-axis .tick[data-edge="end"] {
-    transform: translateX(-80%);
-  }
-  .freq-axis .tick[data-edge="end"]::before {
-    left: 80%;
+    left: auto;
+    right: 0;
+    transform: none;
   }
   .seek-row {
     display: grid;

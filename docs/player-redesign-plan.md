@@ -20,7 +20,8 @@ The current player lives in `src/components/PlayerBar.astro` (the
   glitched track code on the right. The "Now playing" label goes away.
 - **Frequency axis:** a thin strip under the spectrum with a hairline on
   top and a short tick under each label: 50, 100, 250, 500, 1k, 2k, 4k,
-  8k Hz. Ticks sit at their true positions on the visualizer's log scale
+  8k (no unit; the first and last labels sit flush with the spectrum's
+  edges). Ticks sit at their true positions on the visualizer's log scale
   (45 Hz to 9 kHz, `f0`/`f1` in the analyser code). No guide lines run up
   through the bars. Always shown, including when the player falls back to
   simulated bars (no real analyser, e.g. when the audio host blocks
