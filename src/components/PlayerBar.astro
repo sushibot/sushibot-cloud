@@ -1201,10 +1201,14 @@ const freqTicks = [
   // content, the mini bar itself) becomes inert -- #player-drawer is
   // always one of body's direct children (it's transition:persist),
   // so this only ever needs to look at body's immediate children.
+  // Everything behind the stage goes inert while it's open -- except the
+  // site nav, which stays visible above the stage and has to keep
+  // working (a nav click closes the stage; see the listener in
+  // initPlayerBar).
   function setBehindStageInert(isOpen: boolean) {
     if (!drawer) return
     for (const el of Array.from(document.body.children)) {
-      if (el === drawer) continue
+      if (el === drawer || el.matches(".top")) continue
       ;(el as HTMLElement).inert = isOpen
     }
   }
@@ -1514,6 +1518,15 @@ const freqTicks = [
     })
 
     drawerCloseBtn?.addEventListener("click", closeDrawer)
+
+    // A click on the site nav (logo, Archives, About) leaves the stage:
+    // close it first so its body scroll lock is undone before the
+    // browser follows the link -- this also covers same-page links like
+    // /#about, which never fire Astro's navigation events.
+    document.addEventListener("click", (event) => {
+      if (!drawer?.classList.contains("open")) return
+      if ((event.target as HTMLElement).closest(".top a")) closeDrawer()
+    })
 
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape") return
