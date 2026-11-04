@@ -325,8 +325,15 @@ const rail = eraOrder
     }) as EventListener)
     document.dispatchEvent(new CustomEvent("player:query"))
 
-    // default focus: the most recent album, not the oldest
-    wheel.goTo(rows.length - 1, false)
+    // Starting row: the album holding the loaded track (playing or
+    // paused) -- e.g. coming back from an album page mid-listen --
+    // otherwise the most recent album, not the oldest. The player
+    // answers player:query synchronously, so activeAudioUrl is already
+    // set here.
+    const playingAlbum = activeAudioUrl
+      ? rows.findIndex((li) => (li.dataset.albumUrls ?? "").split(" ").includes(activeAudioUrl!))
+      : -1
+    wheel.goTo(playingAlbum !== -1 ? playingAlbum : rows.length - 1, false)
     // page-load entrance: spin in and land on it
     wheel.spinIn()
   }
