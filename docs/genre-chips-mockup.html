@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Genre chips mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Barlow:wght@500;600&display=swap" rel="stylesheet" />
+<!-- Mockup only: genre names and the filtered track titles are
+     placeholders. See genre-chips-plan.md. -->
+<style>
+body{margin:0;padding:24px 16px;background:#1a1d27;font-family:system-ui,sans-serif;color:#c9c2ad}
+.wrap{display:flex;gap:24px;justify-content:center;flex-wrap:wrap}
+.ph{width:240px;height:460px;background:#0b0e16;border-radius:14px;overflow:hidden;position:relative;font-family:'Chakra Petch',sans-serif;color:#ece3cb;flex:none}
+.nv{height:32px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-bottom:1px solid #1d2230;font-size:9px;letter-spacing:.14em;color:#9a9789}
+.st{width:15px;height:15px;background:repeating-linear-gradient(-45deg,#e8c547 0 3px,transparent 3px 6px)}
+.mo{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;color:#9a9789}
+.hd{padding:4px 12px 10px}
+.bar{display:flex;align-items:center;gap:9px;height:34px}
+.sq{width:15px;height:15px;background:#c4432f;flex:none;clip-path:polygon(3px 0,100% 0,100% calc(100% - 3px),calc(100% - 3px) 100%,0 100%,0 3px)}
+.row{position:relative;margin:6px -12px 0 0}
+.chips{display:flex;gap:6px;overflow:hidden;white-space:nowrap;padding-right:12px;align-items:stretch}
+.tag{font-family:'Barlow',sans-serif;font-weight:500;font-size:12px;color:#ece3cb;background:#1f2333;padding:7px 11px;flex:none;clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)}
+.tag.sel{background:#ece3cb;color:#14161f}
+.x{width:30px;flex:none;background:#1f2333;color:#ece3cb;display:flex;align-items:center;justify-content:center;font-size:14px;clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)}
+.edge{position:absolute;top:0;right:0;bottom:0;width:44px;background:linear-gradient(90deg,rgba(11,14,22,0),#0b0e16 70%);pointer-events:none}
+.fade{height:16px;background:linear-gradient(#0b0e16,rgba(11,14,22,0));margin-bottom:-16px;position:relative;z-index:1}
+.rw{height:38px;margin:0 24px 6px 10px;background:#262a38;display:flex;align-items:center;gap:8px;padding:0 8px;font-size:11px;font-weight:600}
+.nm{width:24px;height:24px;background:#b8402d;color:#f3e9d2;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex:none}
+.on{background:#e6dcbd;color:#14161f;margin-left:6px;margin-right:18px}
+.lb{font-size:13px;margin-top:10px;text-align:center;max-width:240px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div><div class="ph">
+<div class="nv"><span class="st"></span><span>ARCHIVES&nbsp;&nbsp;ABOUT</span></div>
+<div class="hd">
+<div class="bar"><span style="color:#c9c2ad;font-size:15px">‹</span><span class="sq"></span><span style="font-size:19px;font-weight:700">2025</span><span class="mo" style="margin-left:auto">15 TRACKS</span></div>
+<div class="row"><div class="chips"><span class="tag">Hardstyle</span><span class="tag">Liquid DnB</span><span class="tag">Big Room</span><span class="tag">IDM</span></div><div class="edge"></div></div>
+</div>
+<div class="fade"></div>
+<div class="rw" style="opacity:.3;margin-top:4px"><span class="nm">04</span>Never Let Yourself Go</div>
+<div class="rw" style="opacity:.45"><span class="nm">05</span>ANONUI CIRCUT (V1)</div>
+<div class="rw" style="opacity:.7"><span class="nm">06</span>Clouds - Extended Mix</div>
+<div class="rw on"><span class="nm">07</span>Ermagerdon (Again)</div>
+<div class="rw" style="opacity:.7"><span class="nm">08</span>Contemplating</div>
+<div class="rw" style="opacity:.45"><span class="nm">09</span>Vulfpeck - Wait for th…</div>
+<div class="rw" style="opacity:.3"><span class="nm">10</span>Deadmau5 - I Remember…</div>
+</div><div class="lb">Nothing selected: genres only</div></div>
+
+<div><div class="ph">
+<div class="nv"><span class="st"></span><span>ARCHIVES&nbsp;&nbsp;ABOUT</span></div>
+<div class="hd">
+<div class="bar"><span style="color:#c9c2ad;font-size:15px">‹</span><span class="sq"></span><span style="font-size:19px;font-weight:700">2025</span><span class="mo" style="margin-left:auto">4 OF 15</span></div>
+<div class="row"><div class="chips"><span class="x" aria-label="Clear genre">✕</span><span class="tag sel">Hardstyle</span><span class="tag">Liquid DnB</span><span class="tag">Big Room</span></div><div class="edge"></div></div>
+</div>
+<div class="fade"></div>
+<div class="rw" style="opacity:.3;margin-top:4px"><span class="nm">11</span>Cyberpunk 2077 - I Rea…</div>
+<div class="rw" style="opacity:.45"><span class="nm">14</span>Overdrive</div>
+<div class="rw" style="opacity:.7"><span class="nm">02</span>Kick Theory</div>
+<div class="rw on"><span class="nm">05</span>ANONUI CIRCUT (V1)</div>
+<div class="rw" style="opacity:.7"><span class="nm">11</span>Cyberpunk 2077 - I Rea…</div>
+<div class="rw" style="opacity:.45"><span class="nm">14</span>Overdrive</div>
+<div class="rw" style="opacity:.3"><span class="nm">02</span>Kick Theory</div>
+</div><div class="lb">Hardstyle selected: ✕ clears it</div></div>
+
+</div>
+</body>
+</html>
