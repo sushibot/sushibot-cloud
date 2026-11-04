@@ -1,4 +1,23 @@
 ---
+// Frequency axis under the stage visualizer. Must match the analyser's
+// log-spaced band range (f0/f1 in the spectrum code below) so each tick
+// sits over the bars that really carry that frequency.
+const VIZ_F0 = 45
+const VIZ_F1 = 9000
+const freqTicks = [
+  [50, "50"],
+  [100, "100"],
+  [250, "250"],
+  [500, "500"],
+  [1000, "1k"],
+  [2000, "2k"],
+  [4000, "4k"],
+  [8000, "8k Hz"],
+].map(([hz, label], i, all) => ({
+  label,
+  left: ((Math.log((hz as number) / VIZ_F0) / Math.log(VIZ_F1 / VIZ_F0)) * 100).toFixed(2),
+  edge: i === 0 ? "start" : i === all.length - 1 ? "end" : undefined,
+}))
 ---
 
 <div
@@ -198,17 +217,19 @@
           <path d="M15 5l-7 7 7 7" />
         </svg>
       </button>
-      <div class="eyebrow-row">
-        <span class="chip">Now playing</span>
-        <span class="code" aria-hidden="true">
-          <span id="drawer-barcode" data-barcode="stage"></span>
-          <span id="drawer-code"></span>
-        </span>
-      </div>
+      <!-- the barcode and the track's catalog code (A06-T04 = album 6,
+           track 4), shown glitched -- purely decorative -->
+      <span class="code" aria-hidden="true">
+        <span id="drawer-barcode" data-barcode="stage"></span>
+        <span id="drawer-code"></span>
+      </span>
     </div>
 
-    <div>
-      <h2 class="title" id="drawer-title">Pick a track</h2>
+    <div class="stage-head">
+      <!-- the inner span is what the long-title marquee slides (phones) -->
+      <h2 class="title" id="drawer-title"
+        ><span class="title-text" id="drawer-title-text">Pick a track</span></h2
+      >
       <p class="sub" id="drawer-sub"></p>
     </div>
 
@@ -224,7 +245,16 @@
         <i></i>
       </div>
     </div>
-    <div class="hazard" aria-hidden="true"></div>
+    <!-- frequency ticks at their true spots on the visualizer's log scale -->
+    <div class="freq-axis" aria-hidden="true">
+      {
+        freqTicks.map(({ label, left, edge }) => (
+          <span class="tick" data-edge={edge} style={`left:${left}%`}>
+            {label}
+          </span>
+        ))
+      }
+    </div>
 
     <div class="seek-row">
       <span id="drawer-cur-time">0:00</span>
@@ -656,6 +686,7 @@
   let drawer: HTMLDivElement | null = null
   let drawerCloseBtn: HTMLButtonElement | null = null
   let drawerTitle: HTMLDivElement | null = null
+  let drawerTitleText: HTMLSpanElement | null = null
   let drawerSub: HTMLParagraphElement | null = null
   let drawerBarcode: HTMLSpanElement | null = null
   let drawerCode: HTMLSpanElement | null = null
@@ -980,15 +1011,27 @@
     if (!npTitle) return
     titleReturn?.cancel()
     titleReturn = null
-    npTitle.classList.remove("marquee")
-    const shift = npTitle.scrollWidth - npTitle.clientWidth
-    if (shift <= 1) return
-    npTitle.style.setProperty("--marquee-shift", `${shift}px`)
+    if (fitMarquee(npTitle) && titleHovered) holdTitleMarquee()
+  }
+  // The same marquee for the stage's big title, which is one line on
+  // phones. Measured whenever the title changes or its box resizes
+  // (including the stage opening, when it first gets a width).
+  function fitStageTitleMarquee() {
+    if (drawerTitle) fitMarquee(drawerTitle)
+  }
+  // Shared by both: sets the overflow distance and cycle length on the
+  // container and turns .marquee on, or leaves it off when the text
+  // fits. Returns whether it's on.
+  function fitMarquee(el: HTMLElement) {
+    el.classList.remove("marquee")
+    const shift = el.scrollWidth - el.clientWidth
+    if (shift <= 1) return false
+    el.style.setProperty("--marquee-shift", `${shift}px`)
     // ~40px/s across the 60% of the cycle spent sliding
-    npTitle.style.setProperty("--marquee-dur", `${Math.max(5, shift / 40 / 0.6)}s`)
-    void npTitle.offsetWidth // restart from the first hold on a new title
-    npTitle.classList.add("marquee")
-    if (titleHovered) holdTitleMarquee()
+    el.style.setProperty("--marquee-dur", `${Math.max(5, shift / 40 / 0.6)}s`)
+    void el.offsetWidth // restart from the first hold on a new title
+    el.classList.add("marquee")
+    return true
   }
 
   // Mouse hover over the title stops the marquee and eases the text back
@@ -1056,7 +1099,10 @@
     // color comes from the same --stage-era/-fg custom properties set
     // just below, already used by the full-screen stage.
     if (npArtNum) npArtNum.textContent = track.trackNum != null ? String(track.trackNum) : ""
-    if (drawerTitle) drawerTitle.textContent = track.title
+    if (drawerTitleText) {
+      drawerTitleText.textContent = track.title
+      fitStageTitleMarquee()
+    }
     if (drawerSub) {
       const parts: string[] = []
       if (track.album) parts.push(track.album)
@@ -1070,7 +1116,8 @@
       }
       drawerSub.textContent = parts.join(" · ")
     }
-    if (drawerCode) drawerCode.textContent = track.code ?? ""
+    stageCode = track.code ?? ""
+    paintStageCode()
     if (drawerBarcode) drawerBarcode.innerHTML = seededBarcode(track.audioUrl, 64, 14)
     document.documentElement.style.setProperty("--stage-era", track.eraBg ?? "var(--scarlet)")
     document.documentElement.style.setProperty("--stage-era-fg", track.eraFg ?? "var(--bone)")
@@ -1172,12 +1219,41 @@
     document.body.style.right = "0"
     drawer.classList.add("open")
     drawer.setAttribute("aria-hidden", "false")
+    // re-scramble the glitched code every few seconds while open
+    clearInterval(codeGlitchTimer)
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      codeGlitchTimer = window.setInterval(paintStageCode, 2500)
+    }
     setBehindStageInert(true)
     drawerPlayBtn?.focus({ preventScroll: true })
   }
 
+  // The stage's catalog code (A06-T04) is decorative, so it's drawn as
+  // "zalgo" glitch text: one to three random combining marks stacked on
+  // every real character. The span is aria-hidden; nothing is lost.
+  let stageCode = ""
+  let codeGlitchTimer = 0
+  function glitchText(s: string) {
+    let out = ""
+    for (const ch of s) {
+      out += ch
+      const marks = 1 + Math.floor(Math.random() * 3)
+      for (let k = 0; k < marks; k++) {
+        // U+0300-U+036F, skipping U+034F (the invisible grapheme joiner)
+        let cp = 0x300 + Math.floor(Math.random() * 0x70)
+        if (cp === 0x34f) cp = 0x350
+        out += String.fromCodePoint(cp)
+      }
+    }
+    return out
+  }
+  function paintStageCode() {
+    if (drawerCode) drawerCode.textContent = stageCode ? glitchText(stageCode) : ""
+  }
+
   function closeDrawer() {
     if (!drawer || !drawer.classList.contains("open")) return
+    clearInterval(codeGlitchTimer)
     drawer.classList.remove("open")
     drawer.setAttribute("aria-hidden", "true")
     document.body.style.position = ""
@@ -1330,6 +1406,7 @@
     drawer = document.getElementById("player-drawer") as HTMLDivElement | null
     drawerCloseBtn = document.getElementById("drawer-close-btn") as HTMLButtonElement | null
     drawerTitle = document.getElementById("drawer-title") as HTMLDivElement | null
+    drawerTitleText = document.getElementById("drawer-title-text") as HTMLSpanElement | null
     drawerSub = document.getElementById("drawer-sub") as HTMLParagraphElement | null
     drawerBarcode = document.getElementById("drawer-barcode") as HTMLSpanElement | null
     drawerCode = document.getElementById("drawer-code") as HTMLSpanElement | null
@@ -1543,7 +1620,11 @@
     // The title's room changes with the bar's width (rotation, desktop
     // resizes) and once the display font loads, so re-measure then.
     new ResizeObserver(() => fitTitleMarquee()).observe(bar!)
-    document.fonts?.ready.then(() => fitTitleMarquee())
+    if (drawerTitle) new ResizeObserver(() => fitStageTitleMarquee()).observe(drawerTitle)
+    document.fonts?.ready.then(() => {
+      fitTitleMarquee()
+      fitStageTitleMarquee()
+    })
     npTitle!.addEventListener("pointerenter", (e) => {
       if (e.pointerType !== "mouse") return
       titleHovered = true
@@ -1604,6 +1685,7 @@
             analyser.getByteFrequencyData(freqData)
             const nyq = (audioCtx?.sampleRate ?? 44100) / 2
             const bins = freqData.length
+            // keep in sync with VIZ_F0/VIZ_F1 (the frequency axis ticks)
             const f0 = 45,
               f1 = 9000
             for (let i = 0; i < N; i++) {
@@ -2386,6 +2468,7 @@
   }
   .stage-top {
     display: flex;
+    align-items: center;
     gap: 2px;
   }
   .icon-btn {
@@ -2421,31 +2504,19 @@
     fill: none;
     stroke: currentColor;
   }
-  .eyebrow-row {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    height: 56px;
-    padding-inline: 16px;
-    background: var(--void);
-    box-shadow: inset 0 0 0 1px var(--line);
-  }
-  .chip {
-    font: 600 13px/1 var(--font-display);
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--bone);
-  }
+  /* barcode + glitched catalog code, pushed to the right of the back
+     button; the combining marks spill above and below the line, so it
+     gets room and never clips */
   .code {
+    margin-left: auto;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    font: 500 12px var(--font-mono);
+    gap: 10px;
+    padding-right: 4px;
+    font: 500 13px/1 var(--font-mono);
     letter-spacing: 0.08em;
     color: var(--ash);
+    white-space: nowrap;
   }
   .title {
     margin: 10px 0 0;
@@ -2453,9 +2524,6 @@
     text-transform: uppercase;
     letter-spacing: -0.005em;
     text-wrap: balance;
-    text-shadow:
-      0 0 0.55em var(--glow-soft),
-      0 0 0.08em rgba(34, 211, 238, 0.5);
     overflow-wrap: anywhere;
   }
   .sub {
@@ -2520,14 +2588,44 @@
       transparent 5px 10px
     );
   }
-  .hazard {
-    height: 8px;
-    opacity: 0.5;
-    background: repeating-linear-gradient(
-      -45deg,
-      var(--hazard) 0 8px,
-      transparent 8px 16px
-    );
+  /* a thin strip under the spectrum: hairline on top, a short tick under
+     each frequency, nothing drawn up through the bars. Always shown --
+     over the simulated fallback the labels are decorative. */
+  .freq-axis {
+    position: relative;
+    height: 24px;
+    margin-top: -12px;
+    border-top: 1px solid var(--line);
+    font: 400 11px/1 var(--font-mono);
+    color: var(--ash-dim);
+  }
+  .freq-axis .tick {
+    position: absolute;
+    top: 0;
+    padding-top: 9px;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+  .freq-axis .tick::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 1px;
+    height: 5px;
+    background: var(--ash-dim);
+  }
+  .freq-axis .tick[data-edge="start"] {
+    transform: translateX(-20%);
+  }
+  .freq-axis .tick[data-edge="start"]::before {
+    left: 20%;
+  }
+  .freq-axis .tick[data-edge="end"] {
+    transform: translateX(-80%);
+  }
+  .freq-axis .tick[data-edge="end"]::before {
+    left: 80%;
   }
   .seek-row {
     display: grid;
@@ -2594,20 +2692,64 @@
       display: none;
     }
   }
+  /* phones: the stage title is one smaller line, and a title too long
+     for it gets the same delayed marquee as the bar (fitMarquee() in
+     the script). overflow-x: clip, not hidden, so the glow above and
+     below the letters isn't cut off. */
+  @media (max-width: 979px) {
+    /* spectrum first, then the title block under it (desktop keeps the
+       title above the spectrum) */
+    .stage-top {
+      order: 0;
+    }
+    .viz-wrap {
+      order: 1;
+    }
+    .freq-axis {
+      order: 2;
+    }
+    .stage-head {
+      order: 3;
+    }
+    .seek-row {
+      order: 4;
+    }
+    .stage-transport {
+      order: 5;
+    }
+    .title {
+      margin-top: 0;
+      font-size: clamp(28px, 7.5vw, 40px);
+      white-space: nowrap;
+      text-wrap: nowrap;
+      overflow-wrap: normal;
+      overflow-x: clip;
+      text-overflow: ellipsis;
+    }
+    .title.marquee {
+      text-overflow: clip;
+    }
+    .title.marquee .title-text {
+      display: inline-block;
+      animation: np-title-marquee var(--marquee-dur) ease-in-out 1s infinite
+        alternate;
+    }
+  }
+  @media (max-width: 979px) and (prefers-reduced-motion: reduce) {
+    .title.marquee {
+      text-overflow: ellipsis;
+    }
+    .title.marquee .title-text {
+      display: inline;
+      animation: none;
+    }
+  }
   /* short phones (iPhone SE and smaller): a long title and the 200px
      visualizer pushed the seek row and transport below the fold, so
      tighten everything until the controls fit without scrolling */
   @media (max-width: 979px) and (max-height: 760px) {
     .stage-in {
       gap: 14px;
-    }
-    .title {
-      font-size: clamp(26px, 8vw, 40px);
-      display: -webkit-box;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 3;
-      line-clamp: 3;
-      overflow: hidden;
     }
     .sub {
       margin-top: 6px;
@@ -2618,10 +2760,6 @@
     }
   }
   @media (max-width: 979px) and (max-height: 600px) {
-    .title {
-      -webkit-line-clamp: 2;
-      line-clamp: 2;
-    }
     .viz-wrap {
       min-height: 56px;
     }
