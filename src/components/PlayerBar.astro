@@ -2511,17 +2511,6 @@ const freqTicks = [
   .player-drawer.open {
     display: flex;
   }
-  .player-drawer::before {
-    content: "";
-    position: absolute;
-    z-index: -1;
-    left: 0;
-    right: 0;
-    top: -10%;
-    height: 55%;
-    background: radial-gradient(closest-side, rgba(34, 211, 238, 0.1), transparent 70%);
-    pointer-events: none;
-  }
   .stage-in {
     flex: 1;
     display: flex;
@@ -2607,7 +2596,6 @@ const freqTicks = [
     width: 100%;
     height: 100%;
     display: block;
-    filter: drop-shadow(0 0 16px rgba(34, 211, 238, 0.18));
   }
   .decal {
     position: absolute;
