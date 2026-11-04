@@ -319,13 +319,20 @@ const trackRows = tracks.map((track, i) => ({
     const theadFull = thead?.querySelector(".thead-full") as HTMLElement | null
     const phone = matchMedia("(max-width: 899px)")
     let focused = 0
-    function syncHeader() {
+    let expandTimer = 0
+    function setCollapsed(collapsed: boolean) {
       if (!thead || !theadBar || !theadFull) return
-      const collapsed = phone.matches && focused > 0
       if (collapsed === thead.classList.contains("is-collapsed")) return
       thead.classList.toggle("is-collapsed", collapsed)
       theadBar.inert = !collapsed
       theadFull.inert = collapsed
+    }
+    // Collapse right away, but only expand once the wheel has settled
+    // on track 01 -- just scrolling past it shouldn't flash the header.
+    function syncHeader() {
+      clearTimeout(expandTimer)
+      if (phone.matches && focused > 0) setCollapsed(true)
+      else expandTimer = window.setTimeout(() => setCollapsed(false), 400)
     }
     phone.addEventListener("change", syncHeader)
 
@@ -436,19 +443,45 @@ const trackRows = tracks.map((track, i) => ({
     margin-left: auto;
     flex: none;
   }
+  /* Phones: the header only ever takes the slim bar's 44px in the
+     layout, and the full header lies over the top of the wheel instead
+     of pushing it down. Collapsing used to resize the wheel, which
+     re-centered every row and made the list jump each time the
+     looping wheel passed track 01; now it's just a fade and slide. */
   @media (max-width: 899px) {
-    .thead.is-collapsed {
-      grid-template-rows: 1fr 0fr;
+    .thead {
+      display: block;
+      height: 44px;
+      transition: none;
+    }
+    .thead-bar {
+      height: 44px;
+      overflow: visible;
+    }
+    .thead-full {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 0 16px;
+      overflow: visible;
+      background: var(--void);
+      transition:
+        opacity 0.2s ease,
+        transform 0.25s ease;
     }
     .thead.is-collapsed .thead-bar {
       opacity: 1;
     }
     .thead.is-collapsed .thead-full {
       opacity: 0;
+      transform: translateY(-8px);
+      pointer-events: none;
     }
-    /* rows fade out under the header instead of cutting off on a
-       hard line */
-    .thead::after {
+    /* rows fade out under whichever header is showing instead of
+       cutting off on a hard line */
+    .thead::after,
+    .thead-full::after {
       content: "";
       position: absolute;
       left: 0;
