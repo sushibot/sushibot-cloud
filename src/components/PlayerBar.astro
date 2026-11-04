@@ -1245,6 +1245,7 @@ const freqTicks = [
     document.body.style.right = "0"
     drawer.classList.add("open")
     drawer.setAttribute("aria-hidden", "false")
+    bar?.classList.add("under-stage")
     // re-scramble the glitched code every few seconds while open
     clearInterval(codeGlitchTimer)
     if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -1281,6 +1282,7 @@ const freqTicks = [
     if (!drawer || !drawer.classList.contains("open")) return
     clearInterval(codeGlitchTimer)
     drawer.classList.remove("open")
+    bar?.classList.remove("under-stage")
     drawer.setAttribute("aria-hidden", "true")
     document.body.style.position = ""
     document.body.style.top = ""
@@ -1849,6 +1851,13 @@ const freqTicks = [
   .player-bar.has-track {
     transform: translateY(0);
     pointer-events: auto;
+  }
+  /* Hidden while the full-screen stage is open (it covers the bar
+     anyway). Otherwise the bar, pinned to the very bottom, sits behind
+     mobile Safari's floating toolbar and tints it the bar's lighter
+     navy instead of the stage's near-black. */
+  .player-bar.under-stage {
+    visibility: hidden;
   }
   /* mobile-only stand-in for the draggable seek input -- a plain,
      non-interactive progress line pinned to the top edge of the bar */
