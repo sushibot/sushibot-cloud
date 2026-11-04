@@ -95,10 +95,12 @@ h3 {
   margin: 0;
 }
 
+/* No outline focus rings (the old cyan ring broke "neon is glow, never
+   fill" and read as clutter). Focusable pieces show focus their own
+   way instead: rows turn hazard yellow, nav links get their red
+   underline, the logo and social links reuse their hover styles. */
 :focus-visible {
-  outline: 2px solid var(--glow);
-  outline-offset: 3px;
-  border-radius: 0;
+  outline: none;
 }
 
 ::selection {
@@ -245,10 +247,6 @@ h3 {
 .rowbtn > * {
   position: relative;
   z-index: 1;
-}
-.rowx:has(.rowbtn:focus-visible) {
-  outline: 2px solid var(--glow);
-  outline-offset: -2px;
 }
 .rowbtn:focus-visible {
   outline: none;
