@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Player BPM and genre rail mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Barlow:wght@500;600&display=swap" rel="stylesheet" />
+<!-- Chosen option 5 for BPM and genre in the redesigned full-screen
+     player: a vertical rail ("HARDSTYLE / 128 BPM" + a light blinking on
+     the beat) down the left edge of the spectrum, on phone and desktop.
+     See player-redesign-plan.md. Genre, BPM, track text and bar heights
+     are placeholders. -->
+<style>
+body{margin:0;padding:24px 16px;background:#1a1d27;font-family:system-ui,sans-serif;color:#c9c2ad}
+.wrap{display:flex;flex-direction:column;align-items:center;gap:28px}
+.lb{font-size:13px;margin-top:10px;text-align:center}
+.ph{width:250px;height:520px;background:#0b0e16;border-radius:14px;overflow:hidden;font-family:'Chakra Petch',sans-serif;color:#ece3cb;display:flex;flex-direction:column}
+.dk{width:100%;max-width:660px;aspect-ratio:16/10.5;background:#0b0e16;border-radius:10px;overflow:hidden;font-family:'Chakra Petch',sans-serif;color:#ece3cb;display:flex;flex-direction:column}
+.nv{height:30px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-bottom:1px solid #1d2230;font-size:9px;letter-spacing:.14em;color:#9a9789}
+.dk .nv{height:34px;justify-content:flex-start;gap:18px;padding:0 14px}
+.st{width:14px;height:14px;background:repeating-linear-gradient(-45deg,#e8c547 0 3px,transparent 3px 6px)}
+.bc{height:16px;width:56px;flex:none;background:repeating-linear-gradient(90deg,#c9c2ad 0 1px,transparent 1px 3px,#c9c2ad 3px 5px,transparent 5px 6px,#c9c2ad 6px 7px,transparent 7px 10px)}
+.z{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9a9789;line-height:1;white-space:nowrap}
+.viz{display:flex;gap:2px;align-items:flex-end}
+.dk .viz{gap:3px}
+.col{flex:1;display:flex;flex-direction:column-reverse;gap:2px}
+.col i{display:block;height:4px;background:#5f8a5f}
+.col i.off{background:#1a1e2a}
+.col i.pk{background:#ece3cb}
+.ax{position:relative;height:22px;border-top:1px solid #2a2e3b;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#7d7a6e;flex:none}
+.ax em{position:absolute;top:0;width:1px;height:5px;background:#4a4c55}
+.ax span{position:absolute;top:8px;transform:translateX(-50%);white-space:nowrap;font-style:normal}
+.ttl{font-weight:700;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-family:'Barlow',sans-serif;font-size:11px;color:#9a9789}
+.seek{display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#9a9789}
+.trk{flex:1;height:3px;background:#262a38;position:relative}
+.trk b{position:absolute;left:0;top:0;bottom:0;width:22%;background:#e5482f}
+.tp{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:2px;height:46px;flex:none}
+.dk .tp{height:38px}
+.tp span{background:#1f2333;display:flex;align-items:center;justify-content:center;font-size:12px;letter-spacing:.12em}
+.tp .pl{background:#e5482f}
+.back{width:30px;height:30px;background:#c4432f;display:flex;align-items:center;justify-content:center;font-size:14px;flex:none}
+.led{width:7px;height:7px;background:#e5482f;display:inline-block;flex:none;animation:beat .469s steps(1) infinite}
+@keyframes beat{0%{opacity:1}30%{opacity:.15}}
+.rail{writing-mode:vertical-rl;transform:rotate(180deg);font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;color:#9a9789;display:flex;gap:10px;align-items:center;white-space:nowrap;border-left:1px solid #2a2e3b}
+.dk .rail{font-size:10px;gap:12px;letter-spacing:.14em}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div><div class="ph">
+<div class="nv"><span class="st"></span><span>ARCHIVES&nbsp;&nbsp;ABOUT</span></div>
+<div style="flex:1;display:flex;flex-direction:column;padding:10px 12px 0">
+<div style="display:flex;align-items:center;gap:8px"><span class="back">‹</span><span style="flex:1"></span><span class="bc"></span><span class="z">A̸̢̛͙0̷̨̧̛6̶̡̛-̵̢͎T̷̨̛0̸̡̛4̷̢̧</span></div>
+<div style="flex:1;display:flex;gap:8px;margin-top:12px">
+<div class="rail"><span>HARDSTYLE</span><span style="color:#5d5b52">/</span><span>128 BPM</span><span class="led" style="writing-mode:horizontal-tb"></span></div>
+<div style="flex:1;display:flex;flex-direction:column"><div class="viz" data-n="22" data-h="20" style="flex:1"></div><div class="ax" style="margin-top:4px"></div></div>
+</div>
+</div>
+<div style="padding:10px 12px 0">
+<div class="ttl" style="font-size:22px">The Other Promise (Sushibot Remix)</div>
+<div class="sub" style="margin-top:4px">2016 · track 4 of 7</div>
+<div class="seek" style="margin-top:12px">0:04<span class="trk"><b></b></span>10:06</div>
+</div>
+<div class="tp" style="margin:12px"><span>⏮</span><span class="pl">❚❚</span><span>⏭</span></div>
+</div><div class="lb">Phone</div></div>
+
+<div style="width:100%;max-width:660px"><div class="dk">
+<div class="nv"><span class="st"></span><b style="color:#ece3cb;letter-spacing:.14em">SUSHICLOUD</b><span style="color:#ece3cb">ARCHIVES</span><span>ABOUT</span></div>
+<div style="flex:1;display:flex;flex-direction:column;padding:12px 26px 10px;min-height:0">
+<div style="display:flex;align-items:center;gap:10px"><span class="back" style="width:28px;height:28px">‹</span><span style="flex:1"></span><span class="bc" style="width:70px"></span><span class="z">A̸̢̛͙0̷̨̧̛6̶̡̛-̵̢͎T̷̨̛0̸̡̛4̷̢̧</span></div>
+<div style="margin-top:10px"><div class="ttl" style="font-size:34px;line-height:1">The Other Promise (Sushibot Remix)</div><div class="sub" style="margin-top:6px;font-size:12px">2016 · track 4 of 7</div></div>
+<div style="flex:1;display:flex;gap:12px;margin-top:14px;min-height:0">
+<div class="rail"><span>HARDSTYLE</span><span style="color:#5d5b52">/</span><span>128 BPM</span><span class="led" style="writing-mode:horizontal-tb"></span></div>
+<div style="flex:1;display:flex;flex-direction:column;min-width:0"><div class="viz" data-n="42" data-h="19" style="flex:1;min-height:0"></div><div class="ax" style="margin-top:4px"></div></div>
+</div>
+<div class="seek" style="margin-top:8px">0:04<span class="trk"><b></b></span>10:06</div>
+<div class="tp" style="margin-top:10px"><span>⏮ PREV</span><span class="pl">❚❚</span><span>NEXT ⏭</span></div>
+</div>
+</div><div class="lb">Desktop: title above the spectrum, rail runs its full height</div></div>
+
+</div>
+<script>
+var F0=45,F1=9000,LBL=[[50,'50'],[100,'100'],[250,'250'],[500,'500'],[1000,'1k'],[2000,'2k'],[4000,'4k'],[8000,'8k Hz']];
+function pos(f){return Math.log(f/F0)/Math.log(F1/F0)}
+document.querySelectorAll('.viz').forEach(function(v,idx){
+  var n=+v.dataset.n,h=+v.dataset.h;
+  for(var c=0;c<n;c++){
+    var col=document.createElement('div');col.className='col';
+    var x=c/(n-1);
+    var lvl=Math.round(h*(0.2+0.6*Math.pow(1-x,1.1)*(0.55+0.45*Math.abs(Math.sin(c*1.3+idx+1)))));
+    var pk=Math.min(h-1,lvl+1+(c*7+idx)%3);
+    for(var r=0;r<h;r++){var b=document.createElement('i');if(r===pk)b.className='pk';else if(r>=lvl)b.className='off';col.appendChild(b)}
+    v.appendChild(col);
+  }
+});
+document.querySelectorAll('.ax').forEach(function(ax){
+  LBL.forEach(function(l,k){
+    var p=pos(l[0])*100;
+    var t=document.createElement('em');t.style.left=p+'%';ax.appendChild(t);
+    var s=document.createElement('span');s.textContent=l[1];s.style.left=p+'%';
+    if(k===0)s.style.transform='translateX(-20%)';
+    if(k===LBL.length-1)s.style.transform='translateX(-80%)';
+    ax.appendChild(s);
+  });
+});
+</script>
+</body>
+</html>
