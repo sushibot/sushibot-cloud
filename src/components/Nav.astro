@@ -203,11 +203,13 @@ const idxLabel = formatArchiveIndex(yearRange)
     background: transparent;
     color: var(--bone);
   }
+  /* the hover / current-page bar spans the link's full width, padding
+     included, not just the text */
   .nav a::after {
     content: "";
     position: absolute;
-    left: 22px;
-    right: 22px;
+    left: 0;
+    right: 0;
     bottom: 0;
     height: 3px;
     background: var(--scarlet);
@@ -273,10 +275,6 @@ const idxLabel = formatArchiveIndex(yearRange)
       padding: 0 12px;
       font-size: 12px;
       letter-spacing: 0.14em;
-    }
-    .nav a::after {
-      left: 12px;
-      right: 12px;
     }
   }
 </style>

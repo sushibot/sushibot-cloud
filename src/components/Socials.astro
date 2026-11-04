@@ -92,11 +92,12 @@ const YOUTUBE_URL = "#"
     flex: none;
     fill: currentColor;
   }
+  /* hover bar spans the whole link, padding included */
   .social a::after {
     content: "";
     position: absolute;
-    left: 16px;
-    right: 16px;
+    left: 0;
+    right: 0;
     bottom: 0;
     height: 3px;
     background: var(--scarlet);
@@ -125,10 +126,6 @@ const YOUTUBE_URL = "#"
       padding: 0 22px;
       justify-content: center;
       gap: 10px;
-    }
-    .social a::after {
-      left: 22px;
-      right: 22px;
     }
     .social a svg {
       display: none;
