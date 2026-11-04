@@ -2289,14 +2289,51 @@ const freqTicks = [
     .volume {
       display: flex;
     }
-    /* Two stacked rows need more than 76px -- the mobile bar keeps its
-       own 68px (set in the max-width: 979px block further down).
-       --minih (page bottom padding) and the stage's own offsets are
-       already driven live off #player-bar's real offsetHeight (see
-       initMinih() in the script), so this one height change is all
-       that's needed for the rest of the page to adapt. */
+    /* Desktop: the same floating notched card as phones, inset and
+       lifted 12px, tall enough for the controls + seek rows. --minih
+       (page bottom padding) follows the real height and lift (see
+       initMinih() in the script). */
     .player-bar {
-      height: 88px;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      height: 76px;
+      background: var(--static-2);
+      border-top: 0;
+      clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+      transform: translateY(calc(100% + 24px));
+    }
+    .player-inner {
+      padding: 10px 20px;
+    }
+    /* unboxed controls, like the phone: bare skip / expand icons and a
+       red play icon */
+    .tbtn,
+    .expand-btn {
+      border-color: transparent;
+    }
+    .tbtn {
+      color: var(--bone);
+    }
+    .tbtn:hover:not(:disabled) {
+      border-color: transparent;
+      color: var(--pop);
+    }
+    .tbtn.play {
+      background: none;
+      color: var(--pop);
+    }
+    .tbtn.play:hover:not(:disabled) {
+      background: none;
+      color: #f0583f;
+    }
+    .tbtn.play:disabled {
+      background: none;
+      border-color: transparent;
+      color: var(--ash-dim);
+    }
+    .expand-btn:hover {
+      border-color: transparent;
     }
   }
 
@@ -2767,21 +2804,70 @@ const freqTicks = [
       display: none;
     }
   }
-  /* phones: Spotify-sized controls. A bare back chevron, plain skip
-     icons and one solid 44px play square in a centered row (every tap
-     area stays 44px), and the seek times move under the bar. Desktop
-     keeps the boxed, labelled controls above. */
+  /* Spotify-sized stage controls on every screen: a bare back chevron,
+     plain skip icons and one solid red play square in a centered row
+     (every tap area at least 44px). Phones also move the seek times
+     under the bar; desktop keeps them beside it and a bigger play. */
+  .collapse {
+    width: 44px;
+    height: 44px;
+    margin-left: -10px;
+    background: none;
+  }
+  .collapse:hover {
+    background: none;
+    color: var(--pop);
+  }
+  .stage-transport {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 40px;
+  }
+  .stage-transport .tb {
+    width: 44px;
+    height: 44px;
+    background: none;
+    box-shadow: none;
+  }
+  .stage-transport .tb:hover:not(:disabled) {
+    background: none;
+    color: var(--pop);
+  }
+  .stage-transport .tb .tl {
+    display: none;
+  }
+  .stage-transport .tb svg {
+    width: 22px;
+    height: 22px;
+  }
+  .stage-transport .tb.play {
+    background: var(--pop);
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  }
+  .stage-transport .tb.play:hover:not(:disabled) {
+    background: #f0583f;
+    color: var(--bone);
+  }
+  .stage-transport .tb.play .ic-play {
+    border-width: 9px 0 9px 15px;
+    margin-left: 3px;
+  }
+  .stage-transport .tb.play .ic-pause {
+    width: 14px;
+    height: 18px;
+  }
+  @media (min-width: 980px) {
+    .stage-transport {
+      gap: 48px;
+    }
+    .stage-transport .tb.play {
+      width: 52px;
+      height: 52px;
+      clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+    }
+  }
   @media (max-width: 979px) {
-    .collapse {
-      width: 44px;
-      height: 44px;
-      margin-left: -10px;
-      background: none;
-    }
-    .collapse:hover {
-      background: none;
-      color: var(--pop);
-    }
     .seek-row {
       grid-template-columns: 1fr 1fr;
       grid-template-areas:
@@ -2805,45 +2891,6 @@ const freqTicks = [
     #drawer-tot-time {
       grid-area: tot;
       justify-self: end;
-    }
-    .stage-transport {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 40px;
-    }
-    .stage-transport .tb {
-      width: 44px;
-      height: 44px;
-      background: none;
-      box-shadow: none;
-    }
-    .stage-transport .tb:hover:not(:disabled) {
-      background: none;
-      color: var(--pop);
-    }
-    .stage-transport .tb .tl {
-      display: none;
-    }
-    .stage-transport .tb svg {
-      width: 22px;
-      height: 22px;
-    }
-    .stage-transport .tb.play {
-      background: var(--pop);
-      clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
-    }
-    .stage-transport .tb.play:hover:not(:disabled) {
-      background: #f0583f;
-      color: var(--bone);
-    }
-    .stage-transport .tb.play .ic-play {
-      border-width: 9px 0 9px 15px;
-      margin-left: 3px;
-    }
-    .stage-transport .tb.play .ic-pause {
-      width: 14px;
-      height: 18px;
     }
   }
   /* phones: the stage title is one smaller line, and a title too long

@@ -3,26 +3,18 @@
 Status: **parked until a desktop-only build.** These were designed while
 reworking the phone layouts and deliberately left off desktop for now.
 
-## Full-screen player: Spotify-style controls
+## Done: player bar and full-screen player (2026-11-03)
 
-Mockup: [desktop-player-controls-mockup.html](desktop-player-controls-mockup.html)
-(current desktop on top, proposed below).
+Desktop now matches the phone styles
+([desktop-player-controls-mockup.html](desktop-player-controls-mockup.html)
+shows the earlier proposal):
 
-Phones already have this (built 2026-11-03, `@media (max-width: 979px)`
-in `src/components/PlayerBar.astro`). For desktop:
-
-- **Back:** a bare chevron instead of the 56px red box, with a 44px tap
-  area.
-- **Transport:** a compact centered row: plain previous and next icons
-  around one solid red play square with chamfered corners, replacing the
-  full-width boxed PREV / play / NEXT buttons. On phones the square is
-  44px; size it up a little for desktop.
-- **Seek bar:** keep the times beside the bar on desktop (there's room),
-  unlike phones where they sit under it.
-- Expect more empty space around the smaller row; that's intentional.
-
-Known desktop quirk to look at in the same pass: with a long two-line
-title the full-screen player scrolls by about 10px.
+- **Player bar:** a floating notched card (inset and lifted 12px, 76px
+  tall) with unboxed previous / next / expand icons and a red play icon;
+  seek and volume stay.
+- **Full-screen player:** bare back chevron, centered transport (plain
+  skip icons around a 52px red play square), seek times beside the bar.
+  The ~10px scroll with long two-line titles is gone.
 
 ## Also waiting on desktop decisions
 
