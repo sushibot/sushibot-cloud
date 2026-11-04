@@ -327,6 +327,8 @@ const rail = eraOrder
 
     // default focus: the most recent album, not the oldest
     wheel.goTo(rows.length - 1, false)
+    // page-load entrance: spin in and land on it
+    wheel.spinIn()
   }
 
   // Not transition:persist -- re-runs fresh on every visit to this page,

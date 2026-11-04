@@ -113,7 +113,9 @@ export function createWheel(
       const i = realOf(nf)
       if (i !== focusReal) {
         focusReal = i
-        onFocus?.(i)
+        // the page-load spin passes through rows on its way in; callers
+        // only hear about the row it lands on (see spinIn)
+        if (!spinning) onFocus?.(i)
       }
     }
   }
@@ -161,6 +163,48 @@ export function createWheel(
     },
     { passive: true },
   )
+
+  // Page-load entrance: the wheel spins in from a few rows back and
+  // lands on the current row, like a DDR song wheel settling. Short and
+  // front-loaded (quart ease-out) so it reads as snappy, not slow. Snap
+  // is off while it runs (programmatic steps would otherwise snap row
+  // by row), any touch / wheel / key cuts it short, and reduced motion
+  // skips it entirely.
+  let spinning = false
+  function spinIn(rowsAway = 4, duration = 450) {
+    if (reduce || !n || !scroller.isConnected) return
+    const r = rowH()
+    // from the scroll position, not `focus`: a goTo() just before this
+    // has moved the scroller but its focus update is still a frame away
+    const target = Math.round(scroller.scrollTop / r)
+    const from = Math.max(0, target - rowsAway)
+    if (from === target) return
+    spinning = true
+    const snap = scroller.style.scrollSnapType
+    scroller.style.scrollSnapType = "none"
+    scroller.scrollTop = from * r
+    const t0 = performance.now()
+    const ease = (x: number) => 1 - Math.pow(1 - x, 4)
+    function finish() {
+      if (!spinning) return
+      spinning = false
+      stopEvents.forEach((type) => scroller.removeEventListener(type, finish))
+      scroller.scrollTop = target * r
+      scroller.style.scrollSnapType = snap
+      update()
+      onFocus?.(focusReal)
+    }
+    const stopEvents = ["pointerdown", "touchstart", "wheel", "keydown"]
+    stopEvents.forEach((type) => scroller.addEventListener(type, finish, { passive: true }))
+    function step(now: number) {
+      if (!spinning) return
+      const x = Math.min(1, (now - t0) / duration)
+      scroller.scrollTop = (from + (target - from) * ease(x)) * r
+      if (x < 1) requestAnimationFrame(step)
+      else finish()
+    }
+    requestAnimationFrame(step)
+  }
 
   function goToK(k: number, smooth = true, focusBtn = false) {
     k = clamp(k, 0, rows.length - 1)
@@ -231,6 +275,7 @@ export function createWheel(
 
   return {
     goTo,
+    spinIn,
     /** real index of the focused row */
     get focus() {
       return focusReal

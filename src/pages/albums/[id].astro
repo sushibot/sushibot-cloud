@@ -365,6 +365,10 @@ const trackRows = tracks.map((track, i) => ({
         wheel.goTo(urlIndex, false)
       }
     }
+
+    // page-load entrance: spin in and land on track 01 (or the
+    // deep-linked track)
+    wheel.spinIn()
   }
 
   document.addEventListener("astro:page-load", initTrackWheel)
