@@ -1,4 +1,6 @@
 ---
+import { ERA_SIGILS } from "../lib/archive"
+
 // Frequency axis under the stage visualizer. Must match the analyser's
 // log-spaced band range (f0/f1 in the spectrum code below) so each tick
 // sits over the bars that really carry that frequency.
@@ -49,12 +51,19 @@ const freqTicks = [
 
   <div class="player-inner">
     <div class="np" id="np">
-      <!-- Desktop only (>=980px). No cover-art field exists anywhere
-           in the content model (checked QueueTrack and every track/
-           album JSON) -- every track renders this same era-colored,
-           chamfered placeholder with its track number. Never invents
-           art. -->
+      <!-- No cover-art field exists anywhere in the content model, so
+           every track gets this era-colored, chamfered tile with its
+           album's era sigil (the same marks as the archives wheel);
+           paintTrackUI() shows the one for the track's era, falling
+           back to the track number if a queue entry has no era. -->
       <div class="np-art" id="np-art" aria-hidden="true">
+        {
+          Object.entries(ERA_SIGILS).map(([token, paths]) => (
+            <svg class="np-sigil" viewBox="0 0 30 30" data-era={token} hidden>
+              {paths.map((d) => <path d={d} />)}
+            </svg>
+          ))
+        }
         <span class="np-art-num" id="np-art-num"></span>
       </div>
       <div class="np-text">
@@ -376,6 +385,7 @@ const freqTicks = [
     trackTotal?: number
     eraBg?: string // e.g. "var(--era-2012)"
     eraFg?: string
+    eraToken?: string // e.g. "--era-2012", picks the album sigil
   }
 
   // ---------- the audio element: a detached singleton, not a DOM node ----------
@@ -677,6 +687,7 @@ const freqTicks = [
   // placeholder tile's track-number text.
   let npYear: HTMLSpanElement | null = null
   let npArtNum: HTMLSpanElement | null = null
+  let npArt: HTMLDivElement | null = null
   let progressFill: HTMLDivElement | null = null
   let progressBorder: HTMLDivElement | null = null
   let npEl: HTMLDivElement | null = null
@@ -1097,11 +1108,19 @@ const freqTicks = [
       const albumIsYear = track.year != null && track.album === String(track.year)
       npYear.textContent = track.year != null && !albumIsYear ? `· ${track.year}` : ""
     }
-    // Desktop-only placeholder tile: no cover-art field exists in the
-    // content model (checked), so this always renders -- the era
-    // color comes from the same --stage-era/-fg custom properties set
-    // just below, already used by the full-screen stage.
-    if (npArtNum) npArtNum.textContent = track.trackNum != null ? String(track.trackNum) : ""
+    // The bar's tile: the album's era sigil, or the track number if
+    // this queue entry has no era. Its color comes from the same
+    // --stage-era/-fg custom properties set just below, already used
+    // by the full-screen stage.
+    let sigilShown = false
+    npArt?.querySelectorAll<SVGElement>(".np-sigil").forEach((svg) => {
+      const match = !!track.eraToken && svg.dataset.era === track.eraToken
+      svg.toggleAttribute("hidden", !match)
+      if (match) sigilShown = true
+    })
+    if (npArtNum) {
+      npArtNum.textContent = !sigilShown && track.trackNum != null ? String(track.trackNum) : ""
+    }
     if (drawerTitleText) {
       drawerTitleText.textContent = track.title
       fitStageTitleMarquee()
@@ -1395,6 +1414,7 @@ const freqTicks = [
     npAlbum = document.getElementById("np-album") as HTMLAnchorElement | null
     npYear = document.getElementById("np-year") as HTMLSpanElement | null
     npArtNum = document.getElementById("np-art-num") as HTMLSpanElement | null
+    npArt = document.getElementById("np-art") as HTMLDivElement | null
     progressFill = document.getElementById("progress-fill") as HTMLDivElement | null
     progressBorder = document.getElementById("progress-border") as HTMLDivElement | null
     npEl = document.getElementById("np") as HTMLDivElement | null
@@ -1883,6 +1903,14 @@ const freqTicks = [
     font-family: var(--font-display);
     font-weight: 700;
     font-size: 0.92rem;
+  }
+  .np-sigil {
+    width: 26px;
+    height: 26px;
+    fill: currentColor;
+  }
+  .np-sigil[hidden] {
+    display: none;
   }
   .np-text {
     min-width: 0;
@@ -2419,6 +2447,18 @@ const freqTicks = [
        title line: the title button's ::after stretches over .np */
     .np {
       position: relative;
+      gap: 12px;
+    }
+    /* the album-sigil tile, a little smaller than desktop's 44px */
+    .np-art {
+      display: flex;
+      width: 40px;
+      height: 40px;
+      clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+    }
+    .np-sigil {
+      width: 24px;
+      height: 24px;
     }
     .np-open::after {
       content: "";
