@@ -150,8 +150,13 @@ const trackRows = tracks.map((track, i) => ({
                           data-index={queueIndex}
                           data-audio-url={track.data.audioUrl}
                         >
+                          <!-- the whole row is the play control; the loaded
+                               track swaps its number for EQ bars -->
                           <span class="disc" style={discStyle}>
                             <span class="num">{num}</span>
+                            <span class="tile-eq" aria-hidden="true">
+                              <i /><i /><i /><i />
+                            </span>
                           </span>
                           <span class="txt">
                             <span class="name">{displayTitle}</span>
@@ -163,17 +168,7 @@ const trackRows = tracks.map((track, i) => ({
                               </span>
                             )}
                           </span>
-                          <span class="eq" aria-hidden="true">
-                            <i /><i /><i /><i /><i />
-                          </span>
-                          <span class="rprog" aria-hidden="true">
-                            <i />
-                          </span>
-                          <span class="cta cta-ico">
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                              <path d="M7 4.5v15l13-7.5z" />
-                            </svg>
-                          </span>
+                          {track.data.duration && <span class="dur">{track.data.duration}</span>}
                         </a>
                       ) : (
                         <div
@@ -270,17 +265,22 @@ const trackRows = tracks.map((track, i) => ({
 
     // every copy of a row, clones included, so the looping wheel's
     // repeats light up too
+    // .is-current marks the loaded track; .is-playing additionally
+    // animates its EQ bars (paused leaves them frozen)
     function markCurrent() {
       ;(Array.from(ol!.children) as HTMLElement[]).forEach((li) => {
         const btn = li.querySelector(".rowbtn") as HTMLElement | null
         const isCurrent = !!btn?.dataset.audioUrl && btn.dataset.audioUrl === activeAudioUrl
         li.classList.toggle("is-current", isCurrent)
+        li.classList.toggle("is-playing", isCurrent && isPlaying)
       })
     }
 
+    let isPlaying = false
     document.addEventListener("player:state", ((event: CustomEvent) => {
       const detail = event.detail ?? {}
       activeAudioUrl = detail.audioUrl ?? null
+      isPlaying = !!detail.playing
       markCurrent()
     }) as EventListener)
     document.dispatchEvent(new CustomEvent("player:query"))
@@ -554,5 +554,85 @@ const trackRows = tracks.map((track, i) => ({
   .rowbtn-disabled {
     cursor: default;
     opacity: 0.55;
+  }
+
+  /* ---- track rows: the whole row is the play control (no play box).
+     The focused row and the loaded track show the duration; the loaded track swaps
+     its number for EQ bars in the tile -- moving while it plays, frozen
+     while paused -- instead of the old ring and meter. ---- */
+  .dur {
+    display: none;
+    flex: none;
+    margin-left: auto;
+    font: 400 13px/1 var(--font-mono);
+    letter-spacing: 0.06em;
+    color: rgba(26, 23, 16, 0.6);
+    font-variant-numeric: tabular-nums;
+  }
+  .row.is-focus .dur,
+  .row.is-current .dur {
+    display: block;
+  }
+  /* on a dark (unfocused) row, e.g. the playing track scrolled away */
+  .row:not(.is-focus) .dur {
+    color: var(--ash);
+  }
+  .row.is-current .disc::after {
+    display: none;
+  }
+  .tile-eq {
+    display: none;
+    align-items: flex-end;
+    gap: 3px;
+    height: 22px;
+  }
+  .row.is-current .num {
+    display: none;
+  }
+  .row.is-current .tile-eq {
+    display: flex;
+  }
+  .tile-eq i {
+    display: block;
+    width: 4px;
+    background: currentColor;
+  }
+  /* frozen (paused) heights, also the reduced-motion look */
+  .tile-eq i:nth-child(1) {
+    height: 60%;
+  }
+  .tile-eq i:nth-child(2) {
+    height: 30%;
+  }
+  .tile-eq i:nth-child(3) {
+    height: 85%;
+  }
+  .tile-eq i:nth-child(4) {
+    height: 45%;
+  }
+  .row.is-playing .tile-eq i {
+    animation: tile-eq 0.9s ease-in-out infinite alternate;
+  }
+  .row.is-playing .tile-eq i:nth-child(2) {
+    animation-delay: -0.3s;
+  }
+  .row.is-playing .tile-eq i:nth-child(3) {
+    animation-delay: -0.6s;
+  }
+  .row.is-playing .tile-eq i:nth-child(4) {
+    animation-delay: -0.15s;
+  }
+  @keyframes tile-eq {
+    from {
+      height: 15%;
+    }
+    to {
+      height: 100%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .row.is-playing .tile-eq i {
+      animation: none;
+    }
   }
 </style>
