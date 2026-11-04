@@ -13,8 +13,9 @@ never collapses:
 - **Chip row:** one row of genre chips underneath that scrolls sideways
   (never wraps, so the header height never changes), fading out at the
   right edge. Chips are flat dark fills with the site's chamfered
-  corners and sentence-case text ("Liquid DnB"), modeled on Spotify's
-  filter chips.
+  corners, modeled on Spotify's filter chips. Labels follow the brand's
+  UI-label style: uppercase Chakra Petch 600 like archive stamps
+  ("LIQUID DNB").
 - **Nothing selected:** only the genre chips show. There is no "All"
   chip.
 - **A genre selected:** a square `✕` chip appears first, then the

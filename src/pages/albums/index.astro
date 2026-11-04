@@ -3,7 +3,7 @@ import Layout from "../../layouts/Layout.astro"
 import Nav from "../../components/Nav.astro"
 import { getCollection } from "astro:content"
 import type { CollectionEntry } from "astro:content"
-import { eraOf, displayTrackNumber } from "../../lib/archive"
+import { eraOf, displayTrackNumber, ERA_SIGILS, parseDuration, formatDuration } from "../../lib/archive"
 
 const albumEntries = await getCollection("albums")
 const allTracks = await getCollection("tracks", ({ data }) => data.display)
@@ -59,16 +59,24 @@ const rail = eraOrder
           rows.map(({ album, tracks, year, era }, i) => {
             const isSingle = tracks.length <= 1
             const track = tracks[0]
-            const metaText = isSingle
-              ? "Single"
-              : `${tracks.length} track${tracks.length === 1 ? "" : "s"}`
+            const totalSeconds = tracks.reduce((sum, t) => sum + parseDuration(t.data.duration), 0)
+            const metaText = [
+              isSingle ? "Single" : `${tracks.length} track${tracks.length === 1 ? "" : "s"}`,
+              totalSeconds > 0 ? formatDuration(totalSeconds) : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+            const idx = String(i + 1).padStart(2, "0")
+            // every playable track in the album, so the row can show the
+            // EQ tile whenever the loaded track came from this album
+            const audioUrls = tracks.map((t) => t.data.audioUrl).filter(Boolean).join(" ")
             const label = `${album.data.title}, ${year}, ${isSingle ? "single" : `${tracks.length} tracks`}`
             const trackTitle = track
               ? (track.data.displayTitle ?? track.data.title)
               : undefined
             const discStyle = `--c:${era.bg};--cf:${era.fg}`
             return (
-              <li class="row" data-i={i} data-era={era.token}>
+              <li class="row" data-i={i} data-era={era.token} data-album-urls={audioUrls}>
                 <div class="rowx">
                   {isSingle ? (
                     <button
@@ -85,50 +93,38 @@ const rail = eraOrder
                       data-era-fg={era.fg}
                       data-code={`A${String(i + 1).padStart(2, "0")}-T${String(track ? displayTrackNumber(track, 0) : 1).padStart(2, "0")}`}
                     >
-                      <span class="disc" style={discStyle}>
-                        <span class="yr">{year}</span>
-                        <span class="bc bars" data-barcode={album.id} aria-hidden="true" />
+                      <span class="disc" style={discStyle} aria-hidden="true">
+                        <svg class="sigil" viewBox="0 0 30 30">
+                          {ERA_SIGILS[era.token].map((d) => <path d={d} />)}
+                        </svg>
+                        <span class="idx">{idx}</span>
+                        <span class="tile-eq"><i /><i /><i /><i /></span>
                       </span>
                       <span class="txt">
                         <span class="name">{album.data.title}</span>
                         <span class="meta">{metaText}</span>
                       </span>
-                      <span class="eq" aria-hidden="true">
-                        <i /><i /><i /><i /><i />
-                      </span>
-                      <span class="tagf">
-                        <b>A{String(i + 1).padStart(2, "0")}</b>
-                        <span class="bc bars" data-barcode={`${album.id}-tag`} aria-hidden="true" />
-                      </span>
-                      <span class="cta cta-ico">
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M7 4.5v15l13-7.5z" />
-                        </svg>
-                      </span>
-                      <span class="rprog" aria-hidden="true">
-                        <i />
+                      <span class="tagf" aria-hidden="true">
+                        <b>A{idx}</b>
+                        <span class="bc bars" data-barcode={`${album.id}-tag`} />
                       </span>
                     </button>
                   ) : (
                     <a class="rowbtn" tabindex="-1" aria-label={label} href={`/albums/${album.id}/`} data-navigate>
-                      <span class="disc" style={discStyle}>
-                        <span class="yr">{year}</span>
-                        <span class="bc bars" data-barcode={album.id} aria-hidden="true" />
+                      <span class="disc" style={discStyle} aria-hidden="true">
+                        <svg class="sigil" viewBox="0 0 30 30">
+                          {ERA_SIGILS[era.token].map((d) => <path d={d} />)}
+                        </svg>
+                        <span class="idx">{idx}</span>
+                        <span class="tile-eq"><i /><i /><i /><i /></span>
                       </span>
                       <span class="txt">
                         <span class="name">{album.data.title}</span>
                         <span class="meta">{metaText}</span>
                       </span>
-                      <span class="eq" aria-hidden="true">
-                        <i /><i /><i /><i /><i />
-                      </span>
-                      <span class="tagf">
-                        <b>A{String(i + 1).padStart(2, "0")}</b>
-                        <span class="bc bars" data-barcode={`${album.id}-tag`} aria-hidden="true" />
-                      </span>
-                      <span class="cta">Open</span>
-                      <span class="rprog" aria-hidden="true">
-                        <i />
+                      <span class="tagf" aria-hidden="true">
+                        <b>A{idx}</b>
+                        <span class="bc bars" data-barcode={`${album.id}-tag`} />
                       </span>
                     </a>
                   )}
@@ -308,17 +304,22 @@ const rail = eraOrder
 
     // every copy of a row, clones included, so the looping wheel's
     // repeats light up too
+    // .is-current marks the album the loaded track belongs to (its tile
+    // shows EQ bars); .is-playing animates them, paused leaves them still
     function markCurrent() {
       ;(Array.from(ol!.children) as HTMLElement[]).forEach((li) => {
-        const btn = li.querySelector(".rowbtn") as HTMLElement | null
-        const isCurrent = !!btn?.dataset.audioUrl && btn.dataset.audioUrl === activeAudioUrl
+        const urls = (li.dataset.albumUrls ?? "").split(" ")
+        const isCurrent = !!activeAudioUrl && urls.includes(activeAudioUrl)
         li.classList.toggle("is-current", isCurrent)
+        li.classList.toggle("is-playing", isCurrent && isPlaying)
       })
     }
 
+    let isPlaying = false
     document.addEventListener("player:state", ((event: CustomEvent) => {
       const detail = event.detail ?? {}
       activeAudioUrl = detail.audioUrl ?? null
+      isPlaying = !!detail.playing
       markCurrent()
     }) as EventListener)
     document.dispatchEvent(new CustomEvent("player:query"))

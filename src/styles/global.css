@@ -291,21 +291,77 @@ h3 {
 .disc .bars {
   display: none;
 }
-.disc::after {
-  content: "";
+/* archives album tiles: the era's sigil (the year is already the row
+   title) with the album's index number tucked in the corner */
+.disc .sigil {
+  width: 28px;
+  height: 28px;
+  fill: currentColor;
+}
+.disc .idx {
   position: absolute;
-  inset: -5px;
-  border-radius: 50%;
-  border: 1.5px dashed rgba(239, 230, 204, 0.26);
+  right: 5px;
+  bottom: 4px;
+  font: 500 9px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+/* now playing: the loaded track's tile (or, on the archives wheel, the
+   tile of the album it came from) swaps its contents for EQ bars,
+   moving while it plays and frozen while paused */
+.tile-eq {
+  display: none;
+  align-items: flex-end;
+  gap: 3px;
+  height: 22px;
+}
+.row.is-current .disc > :not(.tile-eq) {
   display: none;
 }
-.row.is-current .disc::after {
-  display: block;
-  border-style: solid;
-  border-color: var(--bone);
+.row.is-current .tile-eq {
+  display: flex;
 }
-body.playing .row.is-current .disc::after {
-  border-color: var(--pop);
+.tile-eq i {
+  display: block;
+  width: 4px;
+  background: currentColor;
+}
+.tile-eq i:nth-child(1) {
+  height: 60%;
+}
+.tile-eq i:nth-child(2) {
+  height: 30%;
+}
+.tile-eq i:nth-child(3) {
+  height: 85%;
+}
+.tile-eq i:nth-child(4) {
+  height: 45%;
+}
+.row.is-playing .tile-eq i {
+  animation: tile-eq 0.9s ease-in-out infinite alternate;
+}
+.row.is-playing .tile-eq i:nth-child(2) {
+  animation-delay: -0.3s;
+}
+.row.is-playing .tile-eq i:nth-child(3) {
+  animation-delay: -0.6s;
+}
+.row.is-playing .tile-eq i:nth-child(4) {
+  animation-delay: -0.15s;
+}
+@keyframes tile-eq {
+  from {
+    height: 15%;
+  }
+  to {
+    height: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .row.is-playing .tile-eq i {
+    animation: none;
+  }
 }
 
 .txt {
@@ -398,8 +454,11 @@ body.playing .row.is-current .disc::after {
   }
 }
 
+/* index stamp (A16 + barcode) at the end of every archives row,
+   focused or not */
 .tagf {
-  display: none;
+  display: flex;
+  margin-left: auto;
   flex: none;
   flex-direction: column;
   align-items: flex-end;
@@ -417,12 +476,7 @@ body.playing .row.is-current .disc::after {
   opacity: 0.7;
 }
 .row.is-focus .tagf {
-  display: none !important;
-}
-@media (min-width: 640px) {
-  .tagf {
-    display: flex;
-  }
+  color: rgba(26, 23, 16, 0.6);
 }
 
 /* ---- focused row: cream strip, square-cut taper ---- */
@@ -480,74 +534,6 @@ body.playing .row.is-current .disc::after {
   .row.is-focus .rowbtn {
     padding-right: 34px;
   }
-}
-
-/* ---- playing indicator: peak-hold meter + progress line ---- */
-.eq {
-  display: none;
-  flex: none;
-  align-items: flex-end;
-  gap: 3px;
-  height: 30px;
-  margin-left: auto;
-}
-.row.is-current .eq {
-  display: flex;
-}
-.row.is-current .tagf {
-  display: none !important;
-}
-.eq i {
-  position: relative;
-  display: block;
-  width: 5px;
-  height: 30px;
-}
-.eq i::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(to top, var(--glow) 0 4px, transparent 4px 6px);
-  clip-path: inset(calc(30px - var(--n, 1) * 6px) 0 0 0);
-}
-.eq i::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 4px;
-  bottom: calc((var(--k, 1) - 1) * 6px + 2px);
-  background: var(--bone);
-}
-.row.is-focus .eq i::after {
-  background: var(--paper-ink);
-}
-@media (max-width: 639px) {
-  .row.is-focus .eq {
-    display: none;
-  }
-}
-.rowbtn > .rprog {
-  display: none;
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 5px;
-  z-index: 2;
-  background: rgba(239, 230, 204, 0.16);
-}
-.row.is-current .rowbtn > .rprog {
-  display: block;
-}
-.rprog i {
-  display: block;
-  height: 100%;
-  width: var(--prog, 0%);
-  background: var(--pop);
-}
-.row.is-focus .rowbtn > .rprog {
-  background: rgba(26, 23, 16, 0.18);
 }
 
 /* ---- shared 720px reading column + phead/thead label-sheet header,

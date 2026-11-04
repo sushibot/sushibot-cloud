@@ -557,9 +557,9 @@ const trackRows = tracks.map((track, i) => ({
   }
 
   /* ---- track rows: the whole row is the play control (no play box).
-     The focused row and the loaded track show the duration; the loaded track swaps
-     its number for EQ bars in the tile -- moving while it plays, frozen
-     while paused -- instead of the old ring and meter. ---- */
+     The focused row and the loaded track show the duration; the loaded
+     track's EQ-bar tile lives in global.css (shared with the archives
+     wheel). ---- */
   .dur {
     display: none;
     flex: none;
@@ -576,63 +576,5 @@ const trackRows = tracks.map((track, i) => ({
   /* on a dark (unfocused) row, e.g. the playing track scrolled away */
   .row:not(.is-focus) .dur {
     color: var(--ash);
-  }
-  .row.is-current .disc::after {
-    display: none;
-  }
-  .tile-eq {
-    display: none;
-    align-items: flex-end;
-    gap: 3px;
-    height: 22px;
-  }
-  .row.is-current .num {
-    display: none;
-  }
-  .row.is-current .tile-eq {
-    display: flex;
-  }
-  .tile-eq i {
-    display: block;
-    width: 4px;
-    background: currentColor;
-  }
-  /* frozen (paused) heights, also the reduced-motion look */
-  .tile-eq i:nth-child(1) {
-    height: 60%;
-  }
-  .tile-eq i:nth-child(2) {
-    height: 30%;
-  }
-  .tile-eq i:nth-child(3) {
-    height: 85%;
-  }
-  .tile-eq i:nth-child(4) {
-    height: 45%;
-  }
-  .row.is-playing .tile-eq i {
-    animation: tile-eq 0.9s ease-in-out infinite alternate;
-  }
-  .row.is-playing .tile-eq i:nth-child(2) {
-    animation-delay: -0.3s;
-  }
-  .row.is-playing .tile-eq i:nth-child(3) {
-    animation-delay: -0.6s;
-  }
-  .row.is-playing .tile-eq i:nth-child(4) {
-    animation-delay: -0.15s;
-  }
-  @keyframes tile-eq {
-    from {
-      height: 15%;
-    }
-    to {
-      height: 100%;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .row.is-playing .tile-eq i {
-      animation: none;
-    }
   }
 </style>
