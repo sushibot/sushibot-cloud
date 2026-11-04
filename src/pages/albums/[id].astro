@@ -268,8 +268,10 @@ const trackRows = tracks.map((track, i) => ({
     let activeAudioUrl: string | null = null
     const rows = Array.from(ol.children) as HTMLElement[]
 
+    // every copy of a row, clones included, so the looping wheel's
+    // repeats light up too
     function markCurrent() {
-      rows.forEach((li) => {
+      ;(Array.from(ol!.children) as HTMLElement[]).forEach((li) => {
         const btn = li.querySelector(".rowbtn") as HTMLElement | null
         const isCurrent = !!btn?.dataset.audioUrl && btn.dataset.audioUrl === activeAudioUrl
         li.classList.toggle("is-current", isCurrent)
@@ -308,39 +310,36 @@ const trackRows = tracks.map((track, i) => ({
       )
     }
 
-    // Same wheel mechanics as the archives wheel (src/lib/wheel.ts), with
-    // the POC's track-panel anchor (focus sits higher than center so the
-    // list doesn't open with empty space above it).
-    const wheel = createWheel(scroller, ol, {
-      onActivate: (i) => {
-        if (rows[i]) playRow(rows[i])
-      },
-      anchor: 0.34,
-    })
-
-    // Phones: collapse the header into its slim bar once the wheel moves
-    // off the first track, and bring it back at the top. The two
-    // thresholds keep it from flickering around scrollTop 0, and only
-    // the visible header's links stay focusable.
+    // Phones: collapse the header into its slim bar whenever the wheel
+    // isn't on the first track (the wheel loops, so there's no "top" to
+    // scroll back to -- track 01 is the start), and only the visible
+    // header's links stay focusable.
     const thead = document.getElementById("thead")
     const theadBar = thead?.querySelector(".thead-bar") as HTMLElement | null
     const theadFull = thead?.querySelector(".thead-full") as HTMLElement | null
     const phone = matchMedia("(max-width: 899px)")
+    let focused = 0
     function syncHeader() {
       if (!thead || !theadBar || !theadFull) return
-      const top = scroller!.scrollTop
-      const was = thead.classList.contains("is-collapsed")
-      const collapsed = phone.matches && (was ? top > 2 : top > 12)
-      if (collapsed === was) return
+      const collapsed = phone.matches && focused > 0
+      if (collapsed === thead.classList.contains("is-collapsed")) return
       thead.classList.toggle("is-collapsed", collapsed)
       theadBar.inert = !collapsed
       theadFull.inert = collapsed
     }
-    scroller.addEventListener("scroll", syncHeader, { passive: true })
     phone.addEventListener("change", syncHeader)
-    // the wheel may already be scrolled if it was flicked while the page
-    // was still swapping in
-    syncHeader()
+
+    // Same wheel mechanics as the archives wheel (src/lib/wheel.ts): a
+    // looping wheel with the selection centered, like DDR's.
+    const wheel = createWheel(scroller, ol, {
+      onFocus: (i) => {
+        focused = i
+        syncHeader()
+      },
+      onActivate: (i) => {
+        if (rows[i]) playRow(rows[i])
+      },
+    })
 
     // Deep link support: ?track={slug} selects and loads that track into
     // the player (same "active" highlight as normal) without starting

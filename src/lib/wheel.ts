@@ -2,6 +2,16 @@
 // (sushicloud-library.html). Used by both the archives album wheel and the
 // per-album track wheel so the perspective/fan-tilt interaction and focus
 // tracking are implemented exactly once.
+//
+// The wheel loops like a DDR music wheel: the real rows are repeated above
+// and below as aria-hidden clones, and once scrolling comes to rest the
+// position jumps by whole lists back into the middle copy. Every copy looks
+// identical, so the jump is invisible and the list never runs out -- the
+// selection stays centered with no empty space past either end.
+//
+// Rows are addressed two ways: `k` is a position in the extended (cloned)
+// list, `i` is the real row index (k mod n). Everything the caller sees --
+// onFocus, onActivate, goTo -- uses real indices.
 export type WheelOptions = {
   onFocus?: (index: number) => void
   onActivate: (index: number) => void
@@ -17,11 +27,43 @@ export function createWheel(
   const fine = matchMedia("(hover: hover) and (pointer: fine)").matches
   const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
-  let rows: HTMLElement[] = Array.from(ol.children) as HTMLElement[]
+  const real = Array.from(ol.children) as HTMLElement[]
+  const n = real.length
+
+  // Enough copies on each side to cover at least 1.5 screens even for a
+  // 3-track album, so a fling can't run past the clones before the
+  // recenter kicks in.
+  const estRow = real[0]?.offsetHeight || 88
+  const copies = n ? Math.max(1, Math.ceil((window.innerHeight * 1.5) / (n * estRow))) : 0
+  const before: HTMLElement[] = []
+  const after: HTMLElement[] = []
+  for (let c = 0; c < copies; c++) {
+    for (const li of real) {
+      before.push(cloneRow(li))
+      after.push(cloneRow(li))
+    }
+  }
+  ol.prepend(...before)
+  ol.append(...after)
+
+  const rows: HTMLElement[] = Array.from(ol.children) as HTMLElement[]
+  rows.forEach((li, k) => (li.dataset.k = String(k)))
+  const mid = copies * n // k of real row 0
+  const realOf = (k: number) => ((k % n) + n) % n
+
   let focus = -1
+  let focusReal = -1
   let prev: [number, number] = [0, -1]
 
   const rowH = () => (rows[0] ? rows[0].offsetHeight : 96)
+
+  function cloneRow(li: HTMLElement) {
+    const c = li.cloneNode(true) as HTMLElement
+    c.setAttribute("aria-hidden", "true")
+    c.dataset.clone = ""
+    c.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"))
+    return c
+  }
 
   function style(li: HTMLElement, d: number) {
     const a = Math.min(Math.abs(d), 3.2)
@@ -53,8 +95,8 @@ export function createWheel(
     const f = scroller.scrollTop / rowH()
     const lo = Math.max(0, Math.floor(f) - 5)
     const hi = Math.min(rows.length - 1, Math.ceil(f) + 5)
-    for (let i = Math.min(prev[0], lo); i <= Math.max(prev[1], hi); i++) {
-      if (rows[i]) style(rows[i], i - f)
+    for (let k = Math.min(prev[0], lo); k <= Math.max(prev[1], hi); k++) {
+      if (rows[k]) style(rows[k], k - f)
     }
     prev = [lo, hi]
     const nf = clamp(Math.round(f), 0, rows.length - 1)
@@ -68,9 +110,40 @@ export function createWheel(
       rows[nf].classList.add("is-focus")
       const btn = rows[nf].querySelector(".rowbtn") as HTMLElement | null
       if (btn) btn.tabIndex = 0
-      onFocus?.(nf)
+      const i = realOf(nf)
+      if (i !== focusReal) {
+        focusReal = i
+        onFocus?.(i)
+      }
     }
   }
+
+  // Jump back into the middle copy once the wheel is at rest (never
+  // mid-drag). Moves by whole lists, so the rows under the finger look
+  // exactly the same before and after; keyboard focus follows along.
+  function recenter() {
+    if (!n || !scroller.isConnected || dragging || focus < 0) return
+    const target = mid + focusReal
+    if (focus === target) return
+    const hadFocus = rows[focus]?.contains(document.activeElement)
+    scroller.scrollTop += (target - focus) * rowH()
+    update()
+    if (hadFocus) {
+      const btn = rows[target].querySelector(".rowbtn") as HTMLElement | null
+      btn?.focus({ preventScroll: true })
+    }
+  }
+
+  let dragging = false
+  let settle = 0
+  scroller.addEventListener("touchstart", () => (dragging = true), { passive: true })
+  const release = () => {
+    dragging = false
+    clearTimeout(settle)
+    settle = window.setTimeout(recenter, 150)
+  }
+  scroller.addEventListener("touchend", release, { passive: true })
+  scroller.addEventListener("touchcancel", release, { passive: true })
 
   let ticking = false
   scroller.addEventListener(
@@ -83,28 +156,41 @@ export function createWheel(
           update()
         })
       }
+      clearTimeout(settle)
+      settle = window.setTimeout(recenter, 150)
     },
     { passive: true },
   )
 
-  function goTo(i: number, smooth = true, focusBtn = false) {
-    i = clamp(i, 0, rows.length - 1)
-    if (!rows[i]) return
-    scroller.scrollTo({ top: i * rowH(), behavior: smooth && !reduce ? "smooth" : "auto" })
+  function goToK(k: number, smooth = true, focusBtn = false) {
+    k = clamp(k, 0, rows.length - 1)
+    if (!rows[k]) return
+    scroller.scrollTo({ top: k * rowH(), behavior: smooth && !reduce ? "smooth" : "auto" })
     if (focusBtn) {
-      const btn = rows[i].querySelector(".rowbtn") as HTMLElement | null
+      const btn = rows[k].querySelector(".rowbtn") as HTMLElement | null
       btn?.focus({ preventScroll: true })
     }
+  }
+
+  // Real index -> the nearest copy of that row, so jumps take the short
+  // way around (track 01 -> the last track is one step up, not a scroll
+  // through the whole album).
+  function goTo(i: number, smooth = true, focusBtn = false) {
+    if (!n) return
+    i = clamp(i, 0, n - 1)
+    const from = focus < 0 ? mid : focus
+    const k = from + ((((i - realOf(from)) % n) + n + Math.floor(n / 2)) % n) - Math.floor(n / 2)
+    goToK(k, smooth, focusBtn)
   }
 
   ol.addEventListener("click", (e) => {
     const li = (e.target as HTMLElement).closest(".row") as HTMLElement | null
     if (!li) return
-    const i = Number(li.dataset.i)
-    const isActivate = i === focus || fine
+    const k = Number(li.dataset.k)
+    const isActivate = k === focus || fine
     if (!isActivate) {
       e.preventDefault()
-      goTo(i, true, true)
+      goToK(k, true, true)
       return
     }
     const btn = li.querySelector(".rowbtn") as HTMLElement | null
@@ -115,21 +201,21 @@ export function createWheel(
     // this way and are always treated as activatable.
     if (btn?.hasAttribute("data-navigate")) return
     e.preventDefault()
-    if (i !== focus) goTo(i)
-    onActivate(i)
+    if (k !== focus) goToK(k)
+    onActivate(realOf(k))
   })
 
   ol.addEventListener("keydown", (e) => {
-    const k = { ArrowDown: 1, ArrowUp: -1, PageDown: 5, PageUp: -5 }[e.key]
-    if (k) {
+    const step = { ArrowDown: 1, ArrowUp: -1, PageDown: 5, PageUp: -5 }[e.key]
+    if (step) {
       e.preventDefault()
-      goTo(focus + k, true, true)
+      goToK(focus + step, true, true)
     } else if (e.key === "Home") {
       e.preventDefault()
       goTo(0, true, true)
     } else if (e.key === "End") {
       e.preventDefault()
-      goTo(rows.length - 1, true, true)
+      goTo(n - 1, true, true)
     }
   })
 
@@ -139,15 +225,18 @@ export function createWheel(
   }).observe(scroller)
 
   layout()
+  // start on the real (middle) copy of row 0
+  scroller.scrollTop = mid * rowH()
   update()
 
   return {
     goTo,
+    /** real index of the focused row */
     get focus() {
-      return focus
+      return focusReal
     },
     get rows() {
-      return rows
+      return real
     },
     update,
   }

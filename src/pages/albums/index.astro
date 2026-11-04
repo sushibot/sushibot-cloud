@@ -306,8 +306,10 @@ const rail = eraOrder
       wheel.goTo(Number(b.dataset.index), true, true)
     })
 
+    // every copy of a row, clones included, so the looping wheel's
+    // repeats light up too
     function markCurrent() {
-      rows.forEach((li) => {
+      ;(Array.from(ol!.children) as HTMLElement[]).forEach((li) => {
         const btn = li.querySelector(".rowbtn") as HTMLElement | null
         const isCurrent = !!btn?.dataset.audioUrl && btn.dataset.audioUrl === activeAudioUrl
         li.classList.toggle("is-current", isCurrent)
