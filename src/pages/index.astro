@@ -725,7 +725,160 @@ const copyrightSpan =
       width: calc((100% - 210px) * 1.1);
     }
   }
+
+  /* ---- first-visit intro ("signal decode"): html.intro is set in the
+     <head> before first paint (Layout.astro) and holds the hero blank;
+     initIntro below adds .intro-go to start the sequence and removes
+     both classes when it ends or is skipped. Every end state matches
+     the normal resting style, so removing the classes never jumps. */
+  :global(html.intro) .big,
+  :global(html.intro) .rails > *,
+  :global(html.intro) .spec,
+  :global(html.intro) .side .cell,
+  :global(html.intro) .char,
+  :global(html.intro) .herofx,
+  :global(html.intro .top) {
+    opacity: 0;
+  }
+  :global(html.intro) .enter {
+    transform: translateY(100%);
+  }
+  :global(html.intro.intro-go) .big {
+    opacity: 1;
+  }
+  :global(html.intro.intro-go) .rails .st {
+    animation: intro-wipe 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) 0.7s both;
+  }
+  :global(html.intro.intro-go) .rails .ln {
+    animation: intro-wipe 0.25s ease-out 0.8s both;
+  }
+  :global(html.intro.intro-go) .rails .bc {
+    animation: intro-wipe 0.35s steps(10) 0.85s both;
+  }
+  :global(html.intro.intro-go) .enter {
+    animation: intro-rise 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) 1.05s both;
+  }
+  :global(html.intro.intro-go) .side .cell,
+  :global(html.intro.intro-go) .spec,
+  :global(html.intro.intro-go .top) {
+    animation: intro-fade 0.2s ease-out 1.1s both;
+  }
+  /* the character drawing (and its glow) fades in last, once everything
+     else has landed */
+  :global(html.intro.intro-go) .char {
+    animation: intro-char 0.9s ease-out 1.35s both;
+  }
+  :global(html.intro.intro-go) .herofx {
+    animation: intro-glow 0.9s ease-out 1.35s both;
+  }
+  @keyframes intro-wipe {
+    from {
+      opacity: 1;
+      clip-path: inset(0 100% 0 0);
+    }
+    to {
+      opacity: 1;
+      clip-path: inset(0 0 0 0);
+    }
+  }
+  @keyframes intro-rise {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: none;
+    }
+  }
+  @keyframes intro-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes intro-char {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 0.2;
+    }
+  }
+  @keyframes intro-glow {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 0.7;
+    }
+  }
 </style>
+
+<script>
+  /* First-visit intro: SUSHI / CLOUD decode out of scrambled glyphs
+     while the CSS above wipes in the rails, raises the Enter strip and
+     fades the character in last. Only runs when Layout.astro's head
+     script marked this load with html.intro. Any tap or key skips it. */
+  function initIntro() {
+    const root = document.documentElement
+    if (!root.classList.contains("intro") || root.classList.contains("intro-go")) return
+    const words = Array.from(document.querySelectorAll(".big")) as HTMLElement[]
+    const texts = words.map((el) => el.textContent ?? "")
+    const glyphs = "#%&@$*+=/<>0123456789"
+    let done = false
+    let endTimer = 0
+
+    function end() {
+      if (done) return
+      done = true
+      clearTimeout(endTimer)
+      words.forEach((el, i) => (el.textContent = texts[i]))
+      root.classList.remove("intro", "intro-go")
+      removeEventListener("pointerdown", end)
+      removeEventListener("keydown", end)
+    }
+
+    function decode(el: HTMLElement, txt: string, dur: number) {
+      const t0 = performance.now()
+      function frame(now: number) {
+        if (done) return
+        const p = Math.min(1, (now - t0) / dur)
+        let out = ""
+        for (let i = 0; i < txt.length; i++) {
+          out +=
+            p * txt.length * 1.25 > i + Math.random() * 1.5
+              ? txt[i]
+              : glyphs[(Math.random() * glyphs.length) | 0]
+        }
+        el.textContent = out
+        if (p < 1) requestAnimationFrame(frame)
+      }
+      requestAnimationFrame(frame)
+    }
+
+    function start() {
+      if (done) return
+      root.classList.add("intro-go")
+      words.forEach((el, i) => decode(el, texts[i], i === 0 ? 550 : 700))
+      // last animation (the character fade) ends at 2.25s
+      endTimer = window.setTimeout(end, 2300)
+    }
+
+    addEventListener("pointerdown", end, { passive: true })
+    addEventListener("keydown", end)
+    // decode in the real display font, not its fallback; don't wait
+    // more than half a second for it
+    Promise.race([
+      document.fonts.load('700 1em "Chakra Petch"'),
+      new Promise((r) => setTimeout(r, 500)),
+    ]).finally(start)
+  }
+  if (!(window as any).__introWired) {
+    ;(window as any).__introWired = true
+    document.addEventListener("astro:page-load", initIntro)
+  }
+</script>
 
 <script>
   /* Outlined spectrum behind About (simulated, no audio on the home page).

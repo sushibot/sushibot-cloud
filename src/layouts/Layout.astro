@@ -20,6 +20,29 @@ import PlayerBar from "../components/PlayerBar.astro"
       rel="stylesheet"
     />
     <ClientRouter />
+    <!-- First-visit intro (see initIntro in pages/index.astro). Decided
+         here, before first paint, so the hero never flashes fully drawn
+         and then restarts. Only a visitor's very first page load counts,
+         and only when that page is the landing page; every later visit,
+         and any first visit that starts elsewhere, skips it. The timeout
+         is a safety net in case the page script never runs. -->
+    <script is:inline>
+      try {
+        if (!localStorage.getItem("sc-intro-seen")) {
+          localStorage.setItem("sc-intro-seen", "1")
+          if (
+            location.pathname === "/" &&
+            !matchMedia("(prefers-reduced-motion: reduce)").matches
+          ) {
+            var r = document.documentElement
+            r.classList.add("intro")
+            setTimeout(function () {
+              r.classList.remove("intro", "intro-go")
+            }, 5000)
+          }
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <slot />
