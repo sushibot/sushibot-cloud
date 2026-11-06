@@ -3,21 +3,31 @@ import Layout from "../layouts/Layout.astro"
 import Nav from "../components/Nav.astro"
 import Socials from "../components/Socials.astro"
 import { getCollection } from "astro:content"
-import { getYearRange, formatArchiveIndex } from "../lib/archive"
+import { getYearRange, formatArchiveIndex, ERA_SIGILS } from "../lib/archive"
 
 const albums = await getCollection("albums")
 const yearRange = getYearRange(albums)
 const idxLabel = formatArchiveIndex(yearRange)
 const minYear = yearRange?.min
 const maxYear = yearRange?.max
-const maxYY = maxYear !== undefined ? String(maxYear).slice(-2) : undefined
 const buildYY = String(new Date().getUTCFullYear()).slice(-2)
 
+// The hero's corner labels are written in "sigil script": each line of
+// text is replaced by a fixed run of the archive's era sigils (the same
+// marks as the archives album tiles), roughly as long as the words were.
+const sigilSet = Object.values(ERA_SIGILS)
+const sigilLines = {
+  l: [
+    [0, 2, 4, 1, 3, 0, 2, 1, 4],
+    [3, 1, 0, 4, 2, 3, 1, 0, 2, 4, 1, 3, 0, 2, 4],
+  ],
+  r: [
+    [2, 4, 0, 3, 1, 0, 2, 4, 1, 3],
+    [1, 3, 4, 0, 2, 0, 3, 1, 4, 2],
+  ],
+}
+
 const archiveSpan = minYear !== undefined ? `${minYear} – now` : "—"
-const serieSpan =
-  minYear !== undefined && maxYY !== undefined
-    ? `${minYear}–${maxYY}`
-    : "—"
 // end year is the current build year, not the latest release -- the
 // copyright line covers "this site has existed since X", not "the
 // catalog's newest track is from Y"
@@ -62,8 +72,28 @@ const copyrightSpan =
               <div class="ln"></div>
               <div class="bc" data-barcode="hero"></div>
             </div>
-            <p class="spec l" aria-hidden="true">Originals<br />Works in progress</p>
-            <p class="spec r" aria-hidden="true">Serie : {serieSpan}<br />Format : audio</p>
+            <div class="spec l" aria-hidden="true">
+              {
+                sigilLines.l.map((line) => (
+                  <span class="sig-line">
+                    {line.map((k) => (
+                      <svg viewBox="0 0 30 30">{sigilSet[k].map((d) => <path d={d} />)}</svg>
+                    ))}
+                  </span>
+                ))
+              }
+            </div>
+            <div class="spec r" aria-hidden="true">
+              {
+                sigilLines.r.map((line) => (
+                  <span class="sig-line">
+                    {line.map((k) => (
+                      <svg viewBox="0 0 30 30">{sigilSet[k].map((d) => <path d={d} />)}</svg>
+                    ))}
+                  </span>
+                ))
+              }
+            </div>
             <p class="big a" aria-hidden="true">Sushi</p>
             <img
               class="char"
@@ -255,6 +285,26 @@ const copyrightSpan =
   .spec.r {
     right: 16px;
     text-align: right;
+  }
+  /* sigil script: one row of era sigils per former line of text */
+  @media (min-width: 900px) {
+    .spec {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+  }
+  .spec.r {
+    align-items: flex-end;
+  }
+  .sig-line {
+    display: flex;
+    gap: 5px;
+  }
+  .sig-line svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
   }
   @media (max-width: 899px) {
     .spec {
