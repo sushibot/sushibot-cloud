@@ -30,11 +30,13 @@ export function createWheel(
   const real = Array.from(ol.children) as HTMLElement[]
   const n = real.length
 
-  // Enough copies on each side to cover at least 1.5 screens even for a
-  // 3-track album, so a fling can't run past the clones before the
-  // recenter kicks in.
+  // Enough copies on each side to cover about three screens even for a
+  // 3-track album. Together with the mid-scroll recenter in update(),
+  // a fast desktop fling (trackpad momentum or a held mouse wheel,
+  // which never pauses long enough for the idle recenter) can't reach
+  // the end of the clones and show the empty padding past them.
   const estRow = real[0]?.offsetHeight || 88
-  const copies = n ? Math.max(1, Math.ceil((window.innerHeight * 1.5) / (n * estRow))) : 0
+  const copies = n ? Math.max(1, Math.ceil((window.innerHeight * 3) / (n * estRow))) : 0
   const before: HTMLElement[] = []
   const after: HTMLElement[] = []
   for (let c = 0; c < copies; c++) {
@@ -100,6 +102,16 @@ export function createWheel(
     }
     prev = [lo, hi]
     const nf = clamp(Math.round(f), 0, rows.length - 1)
+    // Within one album-length of either end of the clones: recenter
+    // now instead of waiting for the scroll to settle. The jump is a
+    // whole number of album-lengths and keeps the fractional offset,
+    // so it's seamless even mid-motion. Not while a finger is down or
+    // during the page-load spin.
+    if (n && !dragging && !spinning && (nf < n || nf >= rows.length - n)) {
+      scroller.scrollTop += (mid + realOf(nf) - nf) * rowH()
+      update()
+      return
+    }
     if (nf !== focus) {
       if (rows[focus]) {
         rows[focus].classList.remove("is-focus")
