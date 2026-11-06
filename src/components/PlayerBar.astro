@@ -405,6 +405,17 @@ const freqTicks = [
   // than recovering from it.
   let audio: HTMLAudioElement | null = null
   let audioUnavailable = false
+  // iOS (Safari, and Chrome/Brave too -- every iOS browser is WebKit)
+  // suspends Web Audio when the screen locks or the tab goes to the
+  // background. Once the analyser graph is attached, all playback runs
+  // through that AudioContext, so locking the phone stopped the music.
+  // Declaring a "playback" audio session (iOS 16.4+) marks the page as
+  // a music player: audio keeps going in the background and through
+  // the silent switch, like a native player. Harmless where unsupported.
+  try {
+    const session = (navigator as any).audioSession
+    if (session) session.type = "playback"
+  } catch {}
   try {
     audio = new Audio()
     audio.preload = "none"
@@ -648,6 +659,9 @@ const freqTicks = [
   document.addEventListener("visibilitychange", () => {
     debugLog(`visibilitychange: ${document.visibilityState}`)
     if (document.visibilityState === "visible") {
+      // back in the foreground: if the OS suspended the audio graph
+      // while a track should be playing, wake it up
+      if (audio && !audio.paused) resumeAudioContextIfNeeded()
       setErrorUI(playbackError, "visibilitychange resync")
       updatePlayIcon()
       syncProgress()
@@ -878,11 +892,13 @@ const freqTicks = [
         return
       }
       audioCtx = audioCtx || new AC()
-      if (debugMode) {
-        audioCtx.addEventListener("statechange", () => {
-          debugLog(`audioCtx statechange: ${audioCtx!.state}`)
-        })
-      }
+      // If the OS suspends or interrupts the graph (lock screen, a call,
+      // another app's audio) while a track should still be playing,
+      // try to resume right away -- otherwise playback stays silent.
+      audioCtx.addEventListener("statechange", () => {
+        debugLog(`audioCtx statechange: ${audioCtx!.state}`)
+        if (audio && !audio.paused) resumeAudioContextIfNeeded()
+      })
       sourceNode = audioCtx.createMediaElementSource(audio)
       analyser = audioCtx.createAnalyser()
       analyser.fftSize = 1024
@@ -933,7 +949,10 @@ const freqTicks = [
 
   function resumeAudioContextIfNeeded() {
     try {
-      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume()
+      // "interrupted" is WebKit's state for an OS interruption
+      if (audioCtx && (audioCtx.state as string) !== "running" && audioCtx.state !== "closed") {
+        audioCtx.resume().catch(() => {})
+      }
     } catch {}
   }
 
