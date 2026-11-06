@@ -235,7 +235,7 @@ const freqTicks = [
     </div>
 
     <div class="stage-head">
-      <!-- the inner span is what the long-title marquee slides (phones) -->
+      <!-- the inner span is what the long-title marquee slides -->
       <h2 class="title" id="drawer-title"
         ><span class="title-text" id="drawer-title-text">Pick a track</span></h2
       >
@@ -1052,15 +1052,16 @@ const freqTicks = [
   // length. Re-run whenever the title or the bar's width changes.
   function fitTitleMarquee() {
     if (!npTitle) return
-    titleReturn?.cancel()
-    titleReturn = null
-    if (fitMarquee(npTitle) && titleHovered) holdTitleMarquee()
+    barTitleHover.reset()
+    if (fitMarquee(npTitle) && barTitleHover.hovered) barTitleHover.hold()
   }
-  // The same marquee for the stage's big title, which is one line on
-  // phones. Measured whenever the title changes or its box resizes
+  // The same marquee for the stage's big title, which is always one
+  // line. Measured whenever the title changes or its box resizes
   // (including the stage opening, when it first gets a width).
   function fitStageTitleMarquee() {
-    if (drawerTitle) fitMarquee(drawerTitle)
+    if (!drawerTitle) return
+    stageTitleHover.reset()
+    if (fitMarquee(drawerTitle) && stageTitleHover.hovered) stageTitleHover.hold()
   }
   // Shared by both: sets the overflow distance and cycle length on the
   // container and turns .marquee on, or leaves it off when the text
@@ -1077,36 +1078,46 @@ const freqTicks = [
     return true
   }
 
-  // Mouse hover over the title stops the marquee and eases the text back
-  // to its start, so it can be read from the beginning; leaving restarts
-  // the marquee from its first pause. Mouse only -- a tap on phones
-  // opens the stage, and touch "hover" would otherwise stick.
-  let titleHovered = false
-  let titleReturn: Animation | null = null
-  function titleSlide() {
-    return npTitleText
-      ?.getAnimations()
-      .find((a): a is CSSAnimation => a instanceof CSSAnimation)
+  // Mouse hover over a marquee title (the bar's and the stage's) stops
+  // the marquee and eases the text back to its start, so it can be read
+  // from the beginning; leaving restarts the marquee from its first
+  // pause. Mouse only -- a tap on phones opens the stage, and touch
+  // "hover" would otherwise stick.
+  function marqueeHover(getText: () => HTMLElement | null) {
+    let back: Animation | null = null
+    const slide = () =>
+      getText()
+        ?.getAnimations()
+        .find((a): a is CSSAnimation => a instanceof CSSAnimation)
+    return {
+      hovered: false,
+      reset() {
+        back?.cancel()
+        back = null
+      },
+      hold() {
+        const text = getText()
+        const anim = slide()
+        if (!anim || !text) return
+        anim.pause()
+        const x = new DOMMatrix(getComputedStyle(text).transform).m41
+        back?.cancel()
+        back = text.animate(
+          [{ transform: `translateX(${x}px)` }, { transform: "translateX(0)" }],
+          { duration: 250, easing: "ease-out", fill: "forwards" },
+        )
+      },
+      release() {
+        this.reset()
+        const anim = slide()
+        if (!anim) return
+        anim.currentTime = 0
+        anim.play()
+      },
+    }
   }
-  function holdTitleMarquee() {
-    const slide = titleSlide()
-    if (!slide || !npTitleText) return
-    slide.pause()
-    const x = new DOMMatrix(getComputedStyle(npTitleText).transform).m41
-    titleReturn?.cancel()
-    titleReturn = npTitleText.animate(
-      [{ transform: `translateX(${x}px)` }, { transform: "translateX(0)" }],
-      { duration: 250, easing: "ease-out", fill: "forwards" },
-    )
-  }
-  function releaseTitleMarquee() {
-    titleReturn?.cancel()
-    titleReturn = null
-    const slide = titleSlide()
-    if (!slide) return
-    slide.currentTime = 0
-    slide.play()
-  }
+  const barTitleHover = marqueeHover(() => npTitleText)
+  const stageTitleHover = marqueeHover(() => drawerTitleText)
 
   // Paints every piece of UI (bar + stage) for a given track. Called
   // both when a NEW track starts (from loadTrack()) and when resyncing
@@ -1728,16 +1739,21 @@ const freqTicks = [
       fitTitleMarquee()
       fitStageTitleMarquee()
     })
-    npTitle!.addEventListener("pointerenter", (e) => {
-      if (e.pointerType !== "mouse") return
-      titleHovered = true
-      holdTitleMarquee()
-    })
-    npTitle!.addEventListener("pointerleave", (e) => {
-      if (e.pointerType !== "mouse") return
-      titleHovered = false
-      releaseTitleMarquee()
-    })
+    for (const [el, h] of [
+      [npTitle, barTitleHover],
+      [drawerTitle, stageTitleHover],
+    ] as const) {
+      el?.addEventListener("pointerenter", (e) => {
+        if (e.pointerType !== "mouse") return
+        h.hovered = true
+        h.hold()
+      })
+      el?.addEventListener("pointerleave", (e) => {
+        if (e.pointerType !== "mouse") return
+        h.hovered = false
+        h.release()
+      })
+    }
 
     // ---------- stage spectrum -- real analyser with a 118 BPM
     // simulated fallback, matching the home page's About spectrum pattern ----------
@@ -2954,10 +2970,35 @@ const freqTicks = [
       justify-self: end;
     }
   }
-  /* phones: the stage title is one smaller line, and a title too long
-     for it gets the same delayed marquee as the bar (fitMarquee() in
-     the script). overflow-x: clip, not hidden, so the glow above and
-     below the letters isn't cut off. */
+  /* the stage title is always one line, and a title too long for it
+     gets the same delayed marquee as the bar (fitMarquee() in the
+     script). overflow-x: clip, not hidden, so the glow above and below
+     the letters isn't cut off. */
+  .title {
+    white-space: nowrap;
+    text-wrap: nowrap;
+    overflow-wrap: normal;
+    overflow-x: clip;
+    text-overflow: ellipsis;
+  }
+  .title.marquee {
+    text-overflow: clip;
+  }
+  .title.marquee .title-text {
+    display: inline-block;
+    animation: np-title-marquee var(--marquee-dur) ease-in-out 1s infinite
+      alternate;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .title.marquee {
+      text-overflow: ellipsis;
+    }
+    .title.marquee .title-text {
+      display: inline;
+      animation: none;
+    }
+  }
+  /* phones: a smaller title, under the spectrum */
   @media (max-width: 979px) {
     /* spectrum first, then the title block under it (desktop keeps the
        title above the spectrum) */
@@ -2982,28 +3023,6 @@ const freqTicks = [
     .title {
       margin-top: 0;
       font-size: clamp(28px, 7.5vw, 40px);
-      white-space: nowrap;
-      text-wrap: nowrap;
-      overflow-wrap: normal;
-      overflow-x: clip;
-      text-overflow: ellipsis;
-    }
-    .title.marquee {
-      text-overflow: clip;
-    }
-    .title.marquee .title-text {
-      display: inline-block;
-      animation: np-title-marquee var(--marquee-dur) ease-in-out 1s infinite
-        alternate;
-    }
-  }
-  @media (max-width: 979px) and (prefers-reduced-motion: reduce) {
-    .title.marquee {
-      text-overflow: ellipsis;
-    }
-    .title.marquee .title-text {
-      display: inline;
-      animation: none;
     }
   }
   /* short phones (iPhone SE and smaller): a long title and the 200px
@@ -3034,8 +3053,9 @@ const freqTicks = [
     .stage-in {
       gap: 24px;
     }
+    /* one line now, so smaller than the old wrapping headline */
     .title {
-      font-size: clamp(52px, 6vw, 92px);
+      font-size: clamp(40px, 3.6vw, 56px);
     }
     .decal {
       right: 12px;
