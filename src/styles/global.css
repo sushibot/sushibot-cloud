@@ -202,9 +202,11 @@ h3 {
     0 100%,
     0 var(--cut)
   );
-  transition:
-    background-color 0.25s,
-    box-shadow 0.25s;
+  /* No background transition: focus has to switch instantly. The looping
+     wheel swaps focus from a clone to its identical real row whenever it
+     recenters (on every settle, and mid-scroll near the ends), and a fade
+     made that swap flash dark-to-cream; while scrolling it also left two
+     rows half-lit at once. */
 }
 .rowbtn::before {
   content: "";
