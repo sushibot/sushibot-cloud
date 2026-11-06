@@ -1200,6 +1200,36 @@ const freqTicks = [
     }
   }
 
+  // Near the end of a song, quietly fetch the first ~20s of the next
+  // one in the queue so it starts instantly. A bounded byte-range
+  // request (not a second <audio preload="auto">, which iOS ignores and
+  // desktop browsers over-buffer): it warms the browser's HTTP cache
+  // and Cloudflare's edge, and costs at most WARM_BYTES per song. Uses
+  // the same CORS mode as the player (it only runs when the player
+  // itself loads cross-origin with CORS) so the cached response matches
+  // the player's own request. Fails silently -- it's only a head start.
+  const WARM_BYTES = 512 * 1024
+  let warmedUrl = ""
+  function maybeWarmNext() {
+    if (!audio || queue.length < 2 || !Number.isFinite(audio.duration)) return
+    const left = audio.duration - audio.currentTime
+    if (left > 30 && audio.currentTime < audio.duration * 0.75) return
+    const next = queue[(index + 1) % queue.length]
+    if (!next || next.audioUrl === queue[index]?.audioUrl || warmedUrl === next.audioUrl) return
+    // only with CORS (true on staging/prod, not localhost): a no-cors
+    // request may have its Range header dropped and pull the whole file
+    if (audio.crossOrigin !== "anonymous") return
+    warmedUrl = next.audioUrl
+    debugLog(`warm next: ${next.audioUrl}`)
+    fetch(next.audioUrl, {
+      headers: { Range: `bytes=0-${WARM_BYTES - 1}` },
+      mode: "cors",
+      credentials: "omit",
+    })
+      .then((res) => res.arrayBuffer())
+      .catch(() => debugLog("warm next: failed (ignored)"))
+  }
+
   function goToPrev() {
     if (queue.length === 0) return
     loadTrack((index - 1 + queue.length) % queue.length)
@@ -1374,6 +1404,7 @@ const freqTicks = [
     })
     audio.addEventListener("timeupdate", () => {
       if (!audio) return
+      maybeWarmNext()
       if (isSeeking) return
       if (curTimeEl) curTimeEl.textContent = fmt(audio.currentTime)
       if (drawerCurTime) drawerCurTime.textContent = fmt(audio.currentTime)
