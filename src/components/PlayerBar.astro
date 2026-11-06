@@ -1003,6 +1003,16 @@ const freqTicks = [
     // confirmed by reading -- so if they do disappear, it's not this
     // code doing it on purpose) is the first thing to check.
     debugLog("setActionHandler registered: play, pause, previoustrack, nexttrack, seekto (no seekbackward/seekforward)")
+    registerMediaActions()
+  }
+
+  // Also re-run on every track start (the "playing" listener): some iOS
+  // versions drop a page's next/previous handlers when the audio source
+  // changes, leaving the lock screen's skip buttons grayed out.
+  // setActionHandler just replaces the existing handler, so repeating
+  // it is harmless.
+  function registerMediaActions() {
+    if (!("mediaSession" in navigator)) return
     // debugLog() is synchronous (array push + a DOM textContent write)
     // -- it never introduces an await before the handler's own call,
     // which must stay direct and synchronous for iOS to accept it as
@@ -1377,6 +1387,7 @@ const freqTicks = [
     // !audio.paused.
     audio.addEventListener("playing", () => {
       isActuallyPlaying = true
+      registerMediaActions()
       setErrorUI(false, "playing-event")
     })
     audio.addEventListener("pause", () => {
