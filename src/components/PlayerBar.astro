@@ -903,6 +903,14 @@ const freqTicks = [
       analyser = audioCtx.createAnalyser()
       analyser.fftSize = 1024
       analyser.smoothingTimeConstant = 0.55
+      // Byte levels span this dB range. The default (-100..-30) left
+      // mastered tracks no headroom: about a fifth of the bars sat
+      // pinned at the top and nearly every frame lit the red zone.
+      // -90..-15 (measured on tracks from 2013, 2021 and 2025) keeps
+      // bars around half height, with peaks near 80% and the red zone
+      // reserved for the loudest hits.
+      analyser.minDecibels = -90
+      analyser.maxDecibels = -15
       freqData = new Uint8Array(analyser.frequencyBinCount)
       sourceNode.connect(analyser)
       analyser.connect(audioCtx.destination)
@@ -1819,14 +1827,16 @@ const freqTicks = [
             }
             return out
           }
-          // simulated fallback: fixed 118 BPM, phased off currentTime
+          // simulated fallback: fixed 118 BPM, phased off currentTime.
+          // Scaled to the same headroom as the real analyser: the kick
+          // tops out around 85%, so it only just reaches the red zone.
           const ph = (audio.currentTime / (60 / SIM_BPM)) % 1
           for (let i = 0; i < N; i++) {
             const lowW = 1 - i / N
             out[i] = clamp(
-              lowW * 0.95 * Math.exp(-ph * 4) +
-                Math.random() * 0.25 * (0.4 + lowW * 0.6) +
-                0.08,
+              lowW * 0.62 * Math.exp(-ph * 4) +
+                Math.random() * 0.18 * (0.4 + lowW * 0.6) +
+                0.06,
               0,
               1,
             )
