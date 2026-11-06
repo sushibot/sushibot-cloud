@@ -77,7 +77,7 @@ const copyrightSpan =
                 sigilLines.l.map((line) => (
                   <span class="sig-line">
                     {line.map((k) => (
-                      <svg viewBox="0 0 30 30">{sigilSet[k].map((d) => <path d={d} />)}</svg>
+                      <svg viewBox="0 0 30 30" data-k={k}>{sigilSet[k].map((d) => <path d={d} />)}</svg>
                     ))}
                   </span>
                 ))
@@ -88,7 +88,7 @@ const copyrightSpan =
                 sigilLines.r.map((line) => (
                   <span class="sig-line">
                     {line.map((k) => (
-                      <svg viewBox="0 0 30 30">{sigilSet[k].map((d) => <path d={d} />)}</svg>
+                      <svg viewBox="0 0 30 30" data-k={k}>{sigilSet[k].map((d) => <path d={d} />)}</svg>
                     ))}
                   </span>
                 ))
@@ -808,8 +808,12 @@ const copyrightSpan =
   :global(html.intro.intro-go) .enter {
     animation: intro-rise 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) 1.05s both;
   }
+  /* the sigil labels show from the start; initIntro types them in and
+     shuffles them (see sigilShuffle below) */
+  :global(html.intro.intro-go) .spec {
+    opacity: 1;
+  }
   :global(html.intro.intro-go) .side .cell,
-  :global(html.intro.intro-go) .spec,
   :global(html.intro.intro-go .top) {
     animation: intro-fade 0.2s ease-out 1.1s both;
   }
@@ -868,7 +872,9 @@ const copyrightSpan =
 <script>
   /* First-visit intro: SUSHI / CLOUD decode out of scrambled glyphs
      while the CSS above wipes in the rails, raises the Enter strip and
-     fades the character in last. Only runs when Layout.astro's head
+     fades the character in last. The sigil labels in the hero's corners
+     (desktop) type in one mark at a time, shuffling through random
+     sigils, then all snap to their real pattern together. Only runs when Layout.astro's head
      script marked this load with html.intro. Any tap or key skips it. */
   function initIntro() {
     const root = document.documentElement
@@ -879,11 +885,57 @@ const copyrightSpan =
     let done = false
     let endTimer = 0
 
+    const sigils = Array.from(document.querySelectorAll(".sig-line svg")) as SVGElement[]
+    const sigilHTML = sigils.map((el) => el.innerHTML)
+    // one drawing per sigil kind, taken from the marks already on the page
+    const kinds = new Map<string, string>()
+    sigils.forEach((el, i) => kinds.set(el.dataset.k ?? "", sigilHTML[i]))
+    const kindList = Array.from(kinds.values())
+
+    function restoreSigils() {
+      sigils.forEach((el, i) => {
+        el.innerHTML = sigilHTML[i]
+        el.style.visibility = ""
+      })
+    }
+
+    // Each mark appears in turn (the second line a beat behind the
+    // first), swaps to a random sigil every 60ms, and at 1.05s every
+    // mark snaps to its real one at once.
+    function sigilShuffle() {
+      const appear = sigils.map((el) => {
+        const line = el.parentElement!
+        const row = Array.from(line.parentElement!.children).indexOf(line)
+        return row * 120 + Array.from(line.children).indexOf(el) * 45
+      })
+      sigils.forEach((el) => (el.style.visibility = "hidden"))
+      const t0 = performance.now()
+      let lastSwap = -Infinity
+      function frame(now: number) {
+        if (done) return
+        const t = now - t0
+        if (t >= 1050) {
+          restoreSigils()
+          return
+        }
+        const swap = t - lastSwap >= 60
+        if (swap) lastSwap = t
+        sigils.forEach((el, i) => {
+          if (t < appear[i]) return
+          el.style.visibility = ""
+          if (swap) el.innerHTML = kindList[(Math.random() * kindList.length) | 0]
+        })
+        requestAnimationFrame(frame)
+      }
+      requestAnimationFrame(frame)
+    }
+
     function end() {
       if (done) return
       done = true
       clearTimeout(endTimer)
       words.forEach((el, i) => (el.textContent = texts[i]))
+      restoreSigils()
       root.classList.remove("intro", "intro-go")
       removeEventListener("pointerdown", end)
       removeEventListener("keydown", end)
@@ -909,6 +961,7 @@ const copyrightSpan =
 
     function start() {
       if (done) return
+      if (sigils.length && kindList.length) sigilShuffle()
       root.classList.add("intro-go")
       words.forEach((el, i) => decode(el, texts[i], i === 0 ? 550 : 700))
       // last animation (the character fade) ends at 2.25s
